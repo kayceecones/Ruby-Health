@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Ruby Health — Extraction Demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #1a1a1a; }
+    h1 { font-size: 1.25rem; }
+    textarea { width: 100%; height: 220px; font-family: inherit; font-size: 0.95rem; padding: 8px; box-sizing: border-box; }
+    button { margin-top: 12px; padding: 8px 16px; font-size: 0.95rem; cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: 0.6; }
+    pre { background: #f4f4f4; padding: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+    #status { margin-top: 12px; font-size: 0.9rem; }
+    #status.error { color: #b00020; }
+  </style>
+</head>
+<body>
+  <h1>Ruby Health — paste a transcript, see raw extraction</h1>
+  <p>Paste a synthetic patient-provider encounter transcript below. Never use real patient data — this build has no compliance layer.</p>
+  <textarea id="transcript" placeholder="Paste a sample encounter transcript here..."></textarea>
+  <br />
+  <button id="submit">Extract clinical facts</button>
+  <div id="status"></div>
+  <pre id="output"></pre>
+
+  <script>
+    const transcriptEl = document.getElementById("transcript");
+    const submitEl = document.getElementById("submit");
+    const statusEl = document.getElementById("status");
+    const outputEl = document.getElementById("output");
+
+    submitEl.addEventListener("click", async () => {
+      const transcript = transcriptEl.value.trim();
+      if (!transcript) {
+        statusEl.textContent = "Paste a transcript first.";
+        statusEl.className = "error";
+        return;
+      }
+
+      submitEl.disabled = true;
+      statusEl.textContent = "Extracting...";
+      statusEl.className = "";
+      outputEl.textContent = "";
+
+      try {
+        const res = await fetch("/api/extract", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          statusEl.textContent = data.error || "Extraction failed.";
+          statusEl.className = "error";
+          return;
+        }
+
+        statusEl.textContent = "Done.";
+        outputEl.textContent = JSON.stringify(data.facts, null, 2);
+      } catch (err) {
+        statusEl.textContent = "Network error: " + err.message;
+        statusEl.className = "error";
+      } finally {
+        submitEl.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
