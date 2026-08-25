@@ -63,6 +63,7 @@
     <textarea id="transcript" placeholder="Paste a sample encounter transcript here..."></textarea>
     <br />
     <button id="extractBtn">Extract clinical facts →</button>
+    <p class="hint">This carries you all the way through: facts → codes → claim, automatically, landing on the finished draft. Jump to any tab any time to check in, edit, or re-run just that step.</p>
     <div id="extractStatus" class="status"></div>
   </div>
 
@@ -75,7 +76,7 @@
   <div id="panelCodes" class="panel">
     <h2>3. Suggested ICD-10 / CPT codes</h2>
     <p class="hint">Suggestions only — sanity-check before use, not validated against a real coding rule set. Uses whatever is currently on the Facts tab. You can also add/edit/remove codes by hand below.</p>
-    <button id="suggestCodesBtn">Suggest codes from current facts</button>
+    <button id="suggestCodesBtn">Suggest codes from current facts →</button>
     <div id="codesStatus" class="status"></div>
     <div id="codesTableContainer"></div>
   </div>
@@ -161,6 +162,10 @@
 
     tabButtons.forEach((btn) => btn.addEventListener("click", () => showTab(btn.dataset.tab)));
 
+    function delay(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
     // ---- Transcript tab ----
 
     transcriptEl.addEventListener("input", () => {
@@ -195,9 +200,22 @@
 
         state.facts = data.facts;
         renderFactsForm();
-        extractStatusEl.textContent = "Done — see the Facts tab.";
+        extractStatusEl.textContent = "Done.";
         extractStatusEl.className = "status";
         renderTabBar();
+
+        // Carry the user through the rest of the pipeline automatically,
+        // so one click on Extract goes all the way to a populated claim.
+        await delay(500);
+        showTab("facts");
+        await delay(500);
+        showTab("codes");
+        const codesOk = await runSuggestCodes();
+        if (!codesOk) return;
+
+        await delay(500);
+        showTab("claim");
+        await runPopulateClaim();
       } catch (err) {
         extractStatusEl.textContent = "Network error: " + err.message;
         extractStatusEl.className = "status error";
@@ -322,11 +340,11 @@
       );
     }
 
-    suggestCodesBtn.addEventListener("click", async () => {
+    async function runSuggestCodes() {
       if (!hasFacts()) {
         codesStatusEl.textContent = "Add some clinical facts first (on the Facts tab), or extract them from a transcript.";
         codesStatusEl.className = "status error";
-        return;
+        return false;
       }
 
       suggestCodesBtn.disabled = true;
@@ -344,7 +362,7 @@
         if (!res.ok) {
           codesStatusEl.textContent = data.error || "Code suggestion failed.";
           codesStatusEl.className = "status error";
-          return;
+          return false;
         }
 
         state.codes = data.suggestions;
@@ -352,21 +370,25 @@
         codesStatusEl.textContent = data.suggestions.length ? "Done." : "No confident code suggestions — add some by hand below if you like.";
         codesStatusEl.className = "status";
         renderTabBar();
+        return true;
       } catch (err) {
         codesStatusEl.textContent = "Network error: " + err.message;
         codesStatusEl.className = "status error";
+        return false;
       } finally {
         suggestCodesBtn.disabled = false;
       }
-    });
+    }
+
+    suggestCodesBtn.addEventListener("click", () => runSuggestCodes());
 
     // ---- Claim tab ----
 
-    populateClaimBtn.addEventListener("click", async () => {
+    async function runPopulateClaim() {
       if (!state.codes.length) {
         claimStatusEl.textContent = "Add at least one code first (on the Codes tab).";
         claimStatusEl.className = "status error";
-        return;
+        return false;
       }
 
       populateClaimBtn.disabled = true;
@@ -384,7 +406,7 @@
         if (!res.ok) {
           claimStatusEl.textContent = data.error || "Claim population failed.";
           claimStatusEl.className = "status error";
-          return;
+          return false;
         }
 
         claimStatusEl.textContent = "";
@@ -393,13 +415,17 @@
         renderClaimForm();
         reviewActionsEl.style.display = "block";
         renderTabBar();
+        return true;
       } catch (err) {
         claimStatusEl.textContent = "Network error: " + err.message;
         claimStatusEl.className = "status error";
+        return false;
       } finally {
         populateClaimBtn.disabled = false;
       }
-    });
+    }
+
+    populateClaimBtn.addEventListener("click", () => runPopulateClaim());
 
     function resetReviewState() {
       state.reviewed = false;
