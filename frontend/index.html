@@ -2,16 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Ruby Health — Extraction Demo</title>
+  <title>Ruby Health — Encounter to Claim</title>
   <style>
     body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #1a1a1a; }
     h1 { font-size: 1.25rem; }
+    h2 { font-size: 1.05rem; }
     textarea { width: 100%; height: 220px; font-family: inherit; font-size: 0.95rem; padding: 8px; box-sizing: border-box; }
     button { margin-top: 12px; padding: 8px 16px; font-size: 0.95rem; cursor: pointer; }
     button:disabled { cursor: not-allowed; opacity: 0.6; }
     pre { background: #f4f4f4; padding: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
-    #status, #codesStatus { margin-top: 12px; font-size: 0.9rem; }
-    #status.error, #codesStatus.error { color: #b00020; }
+    #status, #codesStatus, #claimStatus { margin-top: 12px; font-size: 0.9rem; }
+    #status.error, #codesStatus.error, #claimStatus.error { color: #b00020; }
     section { margin-top: 32px; padding-top: 16px; border-top: 1px solid #ddd; }
     table { border-collapse: collapse; width: 100%; margin-top: 8px; }
     th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
@@ -26,11 +27,34 @@
     .remove-row { padding: 4px 8px; margin-top: 0; font-size: 0.8rem; }
     .add-row { padding: 4px 10px; margin-top: 8px; font-size: 0.85rem; }
     #claimNote { font-size: 0.85rem; font-style: italic; color: #555; margin-top: 4px; }
+
+    #stepIndicator { display: flex; align-items: center; margin: 24px 0; }
+    .step-chip { display: flex; align-items: center; gap: 8px; }
+    .step-chip .dot {
+      width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 0.8rem; font-weight: 600; border: 2px solid #ccc; color: #888; background: #fff; flex-shrink: 0;
+    }
+    .step-chip .label { font-size: 0.8rem; color: #888; white-space: nowrap; }
+    .step-chip.active .dot { border-color: #1a6fd1; color: #1a6fd1; }
+    .step-chip.active .label { color: #1a1a1a; font-weight: 600; }
+    .step-chip.done .dot { border-color: #1f9254; background: #1f9254; color: #fff; }
+    .step-chip.done .label { color: #1f9254; }
+    .step-connector { flex: 1; height: 2px; background: #ccc; margin: 0 8px; }
+    .step-connector.done { background: #1f9254; }
+
+    #reviewActions { margin-top: 16px; }
+    #reviewedBadge {
+      display: none; margin-top: 12px; padding: 8px 12px; background: #e6f4ea; color: #1f9254;
+      border: 1px solid #1f9254; border-radius: 4px; font-size: 0.9rem; font-weight: 600;
+    }
   </style>
 </head>
 <body>
-  <h1>Ruby Health — paste a transcript, see raw extraction</h1>
+  <h1>Ruby Health — encounter to claim, step by step</h1>
   <p>Paste a synthetic patient-provider encounter transcript below. Never use real patient data — this build has no compliance layer.</p>
+
+  <div id="stepIndicator"></div>
+
   <textarea id="transcript" placeholder="Paste a sample encounter transcript here..."></textarea>
   <br />
   <button id="submit">Extract clinical facts</button>
@@ -51,14 +75,23 @@
   </section>
 
   <section id="claimSection" style="display: none;">
-    <h2>Claim draft</h2>
+    <h2>Claim draft &amp; review</h2>
     <p id="claimNote">Draft only — review and edit everything below. Patient/provider/payer fields are placeholders since no real patient is involved. Nothing here is submitted anywhere.</p>
     <button id="populateClaimBtn">Populate claim</button>
     <div id="claimStatus"></div>
     <div id="claimForm"></div>
+    <div id="reviewActions" style="display: none;">
+      <button id="markReviewedBtn">Mark as reviewed</button>
+      <button id="editAgainBtn" style="display: none;">Edit again</button>
+      <div id="reviewedBadge">✓ Reviewed — draft only, nothing was submitted anywhere.</div>
+    </div>
   </section>
 
   <script>
+    const STEPS = ["Transcript → Facts", "Codes", "Claim", "Review"];
+
+    const stepIndicatorEl = document.getElementById("stepIndicator");
+
     const transcriptEl = document.getElementById("transcript");
     const submitEl = document.getElementById("submit");
     const statusEl = document.getElementById("status");
@@ -74,10 +107,41 @@
     const populateClaimBtn = document.getElementById("populateClaimBtn");
     const claimStatusEl = document.getElementById("claimStatus");
     const claimFormEl = document.getElementById("claimForm");
+    const reviewActionsEl = document.getElementById("reviewActions");
+    const markReviewedBtn = document.getElementById("markReviewedBtn");
+    const editAgainBtn = document.getElementById("editAgainBtn");
+    const reviewedBadgeEl = document.getElementById("reviewedBadge");
 
     let lastFacts = null;
     let lastCodes = null;
     let claimState = null;
+    let reviewed = false;
+
+    function renderStepIndicator() {
+      const completed = [Boolean(lastFacts), Boolean(lastCodes), Boolean(claimState), reviewed];
+      let active = completed.findIndex((c) => !c);
+      if (active === -1) active = completed.length - 1;
+
+      stepIndicatorEl.innerHTML = "";
+      STEPS.forEach((label, i) => {
+        if (i > 0) {
+          const connector = document.createElement("div");
+          connector.className = "step-connector" + (completed[i - 1] ? " done" : "");
+          stepIndicatorEl.appendChild(connector);
+        }
+        const chip = document.createElement("div");
+        chip.className = "step-chip" + (completed[i] ? " done" : i === active ? " active" : "");
+        const dot = document.createElement("div");
+        dot.className = "dot";
+        dot.textContent = completed[i] ? "✓" : String(i + 1);
+        const label_ = document.createElement("div");
+        label_.className = "label";
+        label_.textContent = label;
+        chip.appendChild(dot);
+        chip.appendChild(label_);
+        stepIndicatorEl.appendChild(chip);
+      });
+    }
 
     submitEl.addEventListener("click", async () => {
       const transcript = transcriptEl.value.trim();
@@ -97,8 +161,11 @@
       claimSection.style.display = "none";
       claimFormEl.innerHTML = "";
       claimStatusEl.textContent = "";
+      resetReviewState();
+      lastFacts = null;
       lastCodes = null;
       claimState = null;
+      renderStepIndicator();
 
       try {
         const res = await fetch("/api/extract", {
@@ -123,6 +190,7 @@
         statusEl.className = "error";
       } finally {
         submitEl.disabled = false;
+        renderStepIndicator();
       }
     });
 
@@ -170,11 +238,13 @@
         claimFormEl.innerHTML = "";
         claimStatusEl.textContent = "";
         claimState = null;
+        resetReviewState();
       } catch (err) {
         codesStatusEl.textContent = "Network error: " + err.message;
         codesStatusEl.className = "error";
       } finally {
         suggestCodesBtn.disabled = false;
+        renderStepIndicator();
       }
     });
 
@@ -185,6 +255,7 @@
       claimStatusEl.textContent = "Populating claim...";
       claimStatusEl.className = "";
       claimFormEl.innerHTML = "";
+      resetReviewState();
 
       try {
         const res = await fetch("/api/populate-claim", {
@@ -203,12 +274,46 @@
         claimStatusEl.textContent = "";
         claimState = data.claim;
         renderClaimForm();
+        reviewActionsEl.style.display = "block";
       } catch (err) {
         claimStatusEl.textContent = "Network error: " + err.message;
         claimStatusEl.className = "error";
       } finally {
         populateClaimBtn.disabled = false;
+        renderStepIndicator();
       }
+    });
+
+    function resetReviewState() {
+      reviewed = false;
+      reviewActionsEl.style.display = "none";
+      markReviewedBtn.style.display = "inline-block";
+      editAgainBtn.style.display = "none";
+      reviewedBadgeEl.style.display = "none";
+      setClaimEditable(true);
+    }
+
+    function setClaimEditable(editable) {
+      const controls = claimFormEl.querySelectorAll("input, textarea, button");
+      controls.forEach((el) => (el.disabled = !editable));
+    }
+
+    markReviewedBtn.addEventListener("click", () => {
+      reviewed = true;
+      setClaimEditable(false);
+      markReviewedBtn.style.display = "none";
+      editAgainBtn.style.display = "inline-block";
+      reviewedBadgeEl.style.display = "block";
+      renderStepIndicator();
+    });
+
+    editAgainBtn.addEventListener("click", () => {
+      reviewed = false;
+      setClaimEditable(true);
+      markReviewedBtn.style.display = "inline-block";
+      editAgainBtn.style.display = "none";
+      reviewedBadgeEl.style.display = "none";
+      renderStepIndicator();
     });
 
     function labeledInput(labelText, value, onChange, multiline) {
@@ -364,6 +469,8 @@
       );
       claimFormEl.appendChild(linesFieldset);
     }
+
+    renderStepIndicator();
   </script>
 </body>
 </html>
