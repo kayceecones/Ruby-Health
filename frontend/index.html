@@ -10,8 +10,13 @@
     button { margin-top: 12px; padding: 8px 16px; font-size: 0.95rem; cursor: pointer; }
     button:disabled { cursor: not-allowed; opacity: 0.6; }
     pre { background: #f4f4f4; padding: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
-    #status { margin-top: 12px; font-size: 0.9rem; }
-    #status.error { color: #b00020; }
+    #status, #codesStatus { margin-top: 12px; font-size: 0.9rem; }
+    #status.error, #codesStatus.error { color: #b00020; }
+    section { margin-top: 32px; padding-top: 16px; border-top: 1px solid #ddd; }
+    table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+    th { font-size: 0.85rem; color: #555; }
+    code { background: #f0f0f0; padding: 1px 4px; }
   </style>
 </head>
 <body>
@@ -23,11 +28,32 @@
   <div id="status"></div>
   <pre id="output"></pre>
 
+  <section id="codesSection" style="display: none;">
+    <h2>Suggested ICD-10 / CPT codes</h2>
+    <p>Suggestions only — sanity-check before use, not validated against a real coding rule set.</p>
+    <button id="suggestCodesBtn">Suggest codes</button>
+    <div id="codesStatus"></div>
+    <table id="codesTable" style="display: none;">
+      <thead>
+        <tr><th>Code</th><th>Type</th><th>Description</th><th>Rationale</th></tr>
+      </thead>
+      <tbody id="codesTableBody"></tbody>
+    </table>
+  </section>
+
   <script>
     const transcriptEl = document.getElementById("transcript");
     const submitEl = document.getElementById("submit");
     const statusEl = document.getElementById("status");
     const outputEl = document.getElementById("output");
+
+    const codesSection = document.getElementById("codesSection");
+    const suggestCodesBtn = document.getElementById("suggestCodesBtn");
+    const codesStatusEl = document.getElementById("codesStatus");
+    const codesTable = document.getElementById("codesTable");
+    const codesTableBody = document.getElementById("codesTableBody");
+
+    let lastFacts = null;
 
     submitEl.addEventListener("click", async () => {
       const transcript = transcriptEl.value.trim();
@@ -41,6 +67,9 @@
       statusEl.textContent = "Extracting...";
       statusEl.className = "";
       outputEl.textContent = "";
+      codesSection.style.display = "none";
+      codesTable.style.display = "none";
+      codesStatusEl.textContent = "";
 
       try {
         const res = await fetch("/api/extract", {
@@ -58,11 +87,60 @@
 
         statusEl.textContent = "Done.";
         outputEl.textContent = JSON.stringify(data.facts, null, 2);
+        lastFacts = data.facts;
+        codesSection.style.display = "block";
       } catch (err) {
         statusEl.textContent = "Network error: " + err.message;
         statusEl.className = "error";
       } finally {
         submitEl.disabled = false;
+      }
+    });
+
+    suggestCodesBtn.addEventListener("click", async () => {
+      if (!lastFacts) return;
+
+      suggestCodesBtn.disabled = true;
+      codesStatusEl.textContent = "Suggesting codes...";
+      codesStatusEl.className = "";
+      codesTable.style.display = "none";
+      codesTableBody.innerHTML = "";
+
+      try {
+        const res = await fetch("/api/suggest-codes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ facts: lastFacts }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          codesStatusEl.textContent = data.error || "Code suggestion failed.";
+          codesStatusEl.className = "error";
+          return;
+        }
+
+        codesStatusEl.textContent = data.suggestions.length ? "" : "No confident code suggestions.";
+        for (const s of data.suggestions) {
+          const row = document.createElement("tr");
+          const codeCell = document.createElement("td");
+          const codeEl = document.createElement("code");
+          codeEl.textContent = s.code;
+          codeCell.appendChild(codeEl);
+          row.appendChild(codeCell);
+          for (const value of [s.codeType, s.description, s.rationale]) {
+            const cell = document.createElement("td");
+            cell.textContent = value;
+            row.appendChild(cell);
+          }
+          codesTableBody.appendChild(row);
+        }
+        codesTable.style.display = data.suggestions.length ? "table" : "none";
+      } catch (err) {
+        codesStatusEl.textContent = "Network error: " + err.message;
+        codesStatusEl.className = "error";
+      } finally {
+        suggestCodesBtn.disabled = false;
       }
     });
   </script>

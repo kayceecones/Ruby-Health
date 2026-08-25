@@ -5,6 +5,7 @@ import express from "express";
 import cors from "cors";
 import Anthropic from "@anthropic-ai/sdk";
 import { extractClinicalFacts } from "./pipeline/extract.js";
+import { suggestCodes } from "./pipeline/suggestCodes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIR = path.join(__dirname, "..", "..", "frontend");
@@ -43,6 +44,28 @@ app.post("/api/extract", async (req, res) => {
   } catch (err) {
     console.error("Extraction failed:", err);
     res.status(502).json({ error: "Extraction failed. See server logs for details." });
+  }
+});
+
+app.post("/api/suggest-codes", async (req, res) => {
+  const { facts } = req.body || {};
+
+  if (!facts || typeof facts !== "object") {
+    return res.status(400).json({ error: "Request body must include a 'facts' object (the extraction output)." });
+  }
+
+  if (!anthropic) {
+    return res.status(500).json({
+      error: "ANTHROPIC_API_KEY is not configured on the server. Add it to backend/.env and restart.",
+    });
+  }
+
+  try {
+    const suggestions = await suggestCodes(anthropic, MODEL, facts);
+    res.json({ suggestions });
+  } catch (err) {
+    console.error("Code suggestion failed:", err);
+    res.status(502).json({ error: "Code suggestion failed. See server logs for details." });
   }
 });
 

@@ -22,7 +22,7 @@ Then open http://localhost:3000 — paste a synthetic transcript and submit to s
 
 - [x] Piece 1: project scaffold (backend + minimal frontend skeleton)
 - [x] Piece 2: paste transcript → raw Claude extraction JSON, end to end
-- [ ] Piece 3: ICD-10/CPT code-suggestion step
+- [x] Piece 3: ICD-10/CPT code-suggestion step
 - [ ] Piece 4: claim-template population + editable review screen
 - [ ] Piece 5: step-by-step reveal UI
 - [ ] Piece 6: live mic capture via Web Speech API
