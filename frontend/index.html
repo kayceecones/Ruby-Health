@@ -143,7 +143,8 @@
 
     function hasFacts() {
       const f = state.facts;
-      return Boolean(f.chiefComplaint.trim()) || [f.symptoms, f.diagnosesDiscussed, f.proceduresPerformed, f.medicalNecessityLanguage].some((a) => a.length);
+      const arrayFields = [f.symptoms, f.diagnosesDiscussed, f.proceduresPerformed, f.medicalNecessityLanguage];
+      return Boolean((f.chiefComplaint || "").trim()) || arrayFields.some((a) => Array.isArray(a) && a.length);
     }
 
     function renderTabBar() {
@@ -217,7 +218,8 @@
         showTab("claim");
         await runPopulateClaim();
       } catch (err) {
-        extractStatusEl.textContent = "Network error: " + err.message;
+        console.error("Extract pipeline error:", err);
+        extractStatusEl.textContent = "Something went wrong: " + err.message;
         extractStatusEl.className = "status error";
       } finally {
         extractBtn.disabled = false;
@@ -248,6 +250,10 @@
     function renderFactsForm() {
       factsFormEl.innerHTML = "";
       const f = state.facts;
+      if (!Array.isArray(f.symptoms)) f.symptoms = [];
+      if (!Array.isArray(f.diagnosesDiscussed)) f.diagnosesDiscussed = [];
+      if (!Array.isArray(f.proceduresPerformed)) f.proceduresPerformed = [];
+      if (!Array.isArray(f.medicalNecessityLanguage)) f.medicalNecessityLanguage = [];
 
       const grid = document.createElement("div");
       grid.className = "field-grid";
@@ -365,14 +371,15 @@
           return false;
         }
 
-        state.codes = data.suggestions;
+        state.codes = Array.isArray(data.suggestions) ? data.suggestions : [];
         renderCodesTable();
-        codesStatusEl.textContent = data.suggestions.length ? "Done." : "No confident code suggestions — add some by hand below if you like.";
+        codesStatusEl.textContent = state.codes.length ? "Done." : "No confident code suggestions — add some by hand below if you like.";
         codesStatusEl.className = "status";
         renderTabBar();
         return true;
       } catch (err) {
-        codesStatusEl.textContent = "Network error: " + err.message;
+        console.error("Suggest codes error:", err);
+        codesStatusEl.textContent = "Something went wrong: " + err.message;
         codesStatusEl.className = "status error";
         return false;
       } finally {
@@ -417,7 +424,8 @@
         renderTabBar();
         return true;
       } catch (err) {
-        claimStatusEl.textContent = "Network error: " + err.message;
+        console.error("Populate claim error:", err);
+        claimStatusEl.textContent = "Something went wrong: " + err.message;
         claimStatusEl.className = "status error";
         return false;
       } finally {

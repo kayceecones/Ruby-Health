@@ -48,5 +48,5 @@ export async function suggestCodes(anthropic, model, facts) {
   if (!toolUse) {
     throw new Error("Claude did not return structured code suggestion output.");
   }
-  return toolUse.input.suggestions;
+  return Array.isArray(toolUse.input?.suggestions) ? toolUse.input.suggestions : [];
 }

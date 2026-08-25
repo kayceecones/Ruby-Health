@@ -56,5 +56,13 @@ export async function extractClinicalFacts(anthropic, model, transcript) {
   if (!toolUse) {
     throw new Error("Claude did not return structured extraction output.");
   }
-  return toolUse.input;
+
+  const input = toolUse.input || {};
+  return {
+    chiefComplaint: typeof input.chiefComplaint === "string" ? input.chiefComplaint : "",
+    symptoms: Array.isArray(input.symptoms) ? input.symptoms : [],
+    diagnosesDiscussed: Array.isArray(input.diagnosesDiscussed) ? input.diagnosesDiscussed : [],
+    proceduresPerformed: Array.isArray(input.proceduresPerformed) ? input.proceduresPerformed : [],
+    medicalNecessityLanguage: Array.isArray(input.medicalNecessityLanguage) ? input.medicalNecessityLanguage : [],
+  };
 }
