@@ -17,6 +17,15 @@
     th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
     th { font-size: 0.85rem; color: #555; }
     code { background: #f0f0f0; padding: 1px 4px; }
+    .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin-top: 8px; }
+    .field-grid label { display: flex; flex-direction: column; font-size: 0.8rem; color: #555; gap: 4px; }
+    .field-grid input, .field-grid textarea { font-family: inherit; font-size: 0.95rem; padding: 6px; box-sizing: border-box; }
+    fieldset { margin-top: 16px; border: 1px solid #ddd; }
+    legend { font-weight: 600; font-size: 0.9rem; }
+    .row-input { width: 100%; box-sizing: border-box; font-family: inherit; font-size: 0.9rem; padding: 4px; }
+    .remove-row { padding: 4px 8px; margin-top: 0; font-size: 0.8rem; }
+    .add-row { padding: 4px 10px; margin-top: 8px; font-size: 0.85rem; }
+    #claimNote { font-size: 0.85rem; font-style: italic; color: #555; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -41,6 +50,14 @@
     </table>
   </section>
 
+  <section id="claimSection" style="display: none;">
+    <h2>Claim draft</h2>
+    <p id="claimNote">Draft only — review and edit everything below. Patient/provider/payer fields are placeholders since no real patient is involved. Nothing here is submitted anywhere.</p>
+    <button id="populateClaimBtn">Populate claim</button>
+    <div id="claimStatus"></div>
+    <div id="claimForm"></div>
+  </section>
+
   <script>
     const transcriptEl = document.getElementById("transcript");
     const submitEl = document.getElementById("submit");
@@ -53,7 +70,14 @@
     const codesTable = document.getElementById("codesTable");
     const codesTableBody = document.getElementById("codesTableBody");
 
+    const claimSection = document.getElementById("claimSection");
+    const populateClaimBtn = document.getElementById("populateClaimBtn");
+    const claimStatusEl = document.getElementById("claimStatus");
+    const claimFormEl = document.getElementById("claimForm");
+
     let lastFacts = null;
+    let lastCodes = null;
+    let claimState = null;
 
     submitEl.addEventListener("click", async () => {
       const transcript = transcriptEl.value.trim();
@@ -70,6 +94,11 @@
       codesSection.style.display = "none";
       codesTable.style.display = "none";
       codesStatusEl.textContent = "";
+      claimSection.style.display = "none";
+      claimFormEl.innerHTML = "";
+      claimStatusEl.textContent = "";
+      lastCodes = null;
+      claimState = null;
 
       try {
         const res = await fetch("/api/extract", {
@@ -136,6 +165,11 @@
           codesTableBody.appendChild(row);
         }
         codesTable.style.display = data.suggestions.length ? "table" : "none";
+        lastCodes = data.suggestions;
+        claimSection.style.display = "block";
+        claimFormEl.innerHTML = "";
+        claimStatusEl.textContent = "";
+        claimState = null;
       } catch (err) {
         codesStatusEl.textContent = "Network error: " + err.message;
         codesStatusEl.className = "error";
@@ -143,6 +177,193 @@
         suggestCodesBtn.disabled = false;
       }
     });
+
+    populateClaimBtn.addEventListener("click", async () => {
+      if (!lastFacts || !lastCodes) return;
+
+      populateClaimBtn.disabled = true;
+      claimStatusEl.textContent = "Populating claim...";
+      claimStatusEl.className = "";
+      claimFormEl.innerHTML = "";
+
+      try {
+        const res = await fetch("/api/populate-claim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ facts: lastFacts, codes: lastCodes }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          claimStatusEl.textContent = data.error || "Claim population failed.";
+          claimStatusEl.className = "error";
+          return;
+        }
+
+        claimStatusEl.textContent = "";
+        claimState = data.claim;
+        renderClaimForm();
+      } catch (err) {
+        claimStatusEl.textContent = "Network error: " + err.message;
+        claimStatusEl.className = "error";
+      } finally {
+        populateClaimBtn.disabled = false;
+      }
+    });
+
+    function labeledInput(labelText, value, onChange, multiline) {
+      const label = document.createElement("label");
+      label.textContent = labelText;
+      const input = document.createElement(multiline ? "textarea" : "input");
+      if (!multiline) input.type = "text";
+      else input.rows = 3;
+      input.value = value || "";
+      input.addEventListener("input", (e) => onChange(e.target.value));
+      label.appendChild(input);
+      return label;
+    }
+
+    function renderEditableTable(container, headers, rows, fields, onRemove, onAdd, addLabel) {
+      const table = document.createElement("table");
+      const thead = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      for (const h of headers) {
+        const th = document.createElement("th");
+        th.textContent = h;
+        headRow.appendChild(th);
+      }
+      headRow.appendChild(document.createElement("th"));
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement("tbody");
+      rows.forEach((row, i) => {
+        const tr = document.createElement("tr");
+        for (const field of fields) {
+          const td = document.createElement("td");
+          const input = document.createElement("input");
+          input.className = "row-input";
+          input.type = "text";
+          input.value = row[field] ?? "";
+          input.addEventListener("input", (e) => {
+            row[field] = field === "units" ? Number(e.target.value) || 0 : e.target.value;
+          });
+          td.appendChild(input);
+          tr.appendChild(td);
+        }
+        const actionTd = document.createElement("td");
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "remove-row";
+        removeBtn.textContent = "Remove";
+        removeBtn.addEventListener("click", () => {
+          rows.splice(i, 1);
+          renderClaimForm();
+        });
+        actionTd.appendChild(removeBtn);
+        tr.appendChild(actionTd);
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      container.appendChild(table);
+
+      const addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "add-row";
+      addBtn.textContent = addLabel;
+      addBtn.addEventListener("click", () => {
+        onAdd();
+        renderClaimForm();
+      });
+      container.appendChild(addBtn);
+    }
+
+    function renderClaimForm() {
+      claimFormEl.innerHTML = "";
+      if (!claimState) return;
+      const c = claimState;
+
+      const patientFieldset = document.createElement("fieldset");
+      const patientLegend = document.createElement("legend");
+      patientLegend.textContent = "Patient (placeholder)";
+      patientFieldset.appendChild(patientLegend);
+      const patientGrid = document.createElement("div");
+      patientGrid.className = "field-grid";
+      patientGrid.appendChild(labeledInput("Name", c.patient.name, (v) => (c.patient.name = v)));
+      patientGrid.appendChild(labeledInput("Date of birth", c.patient.dob, (v) => (c.patient.dob = v)));
+      patientGrid.appendChild(labeledInput("Sex", c.patient.sex, (v) => (c.patient.sex = v)));
+      patientGrid.appendChild(labeledInput("Member ID", c.patient.memberId, (v) => (c.patient.memberId = v)));
+      patientFieldset.appendChild(patientGrid);
+      claimFormEl.appendChild(patientFieldset);
+
+      const providerFieldset = document.createElement("fieldset");
+      const providerLegend = document.createElement("legend");
+      providerLegend.textContent = "Provider (placeholder)";
+      providerFieldset.appendChild(providerLegend);
+      const providerGrid = document.createElement("div");
+      providerGrid.className = "field-grid";
+      providerGrid.appendChild(labeledInput("Name", c.provider.name, (v) => (c.provider.name = v)));
+      providerGrid.appendChild(labeledInput("NPI", c.provider.npi, (v) => (c.provider.npi = v)));
+      providerGrid.appendChild(labeledInput("Address", c.provider.address, (v) => (c.provider.address = v)));
+      providerGrid.appendChild(labeledInput("Date of service", c.dateOfService, (v) => (c.dateOfService = v)));
+      providerFieldset.appendChild(providerGrid);
+      claimFormEl.appendChild(providerFieldset);
+
+      const payerFieldset = document.createElement("fieldset");
+      const payerLegend = document.createElement("legend");
+      payerLegend.textContent = "Payer (placeholder)";
+      payerFieldset.appendChild(payerLegend);
+      const payerGrid = document.createElement("div");
+      payerGrid.className = "field-grid";
+      payerGrid.appendChild(labeledInput("Name", c.payer.name, (v) => (c.payer.name = v)));
+      payerGrid.appendChild(labeledInput("Payer ID", c.payer.payerId, (v) => (c.payer.payerId = v)));
+      payerFieldset.appendChild(payerGrid);
+      claimFormEl.appendChild(payerFieldset);
+
+      const clinicalFieldset = document.createElement("fieldset");
+      const clinicalLegend = document.createElement("legend");
+      clinicalLegend.textContent = "Clinical summary";
+      clinicalFieldset.appendChild(clinicalLegend);
+      const clinicalGrid = document.createElement("div");
+      clinicalGrid.className = "field-grid";
+      clinicalGrid.style.gridTemplateColumns = "1fr";
+      clinicalGrid.appendChild(labeledInput("Chief complaint", c.chiefComplaint, (v) => (c.chiefComplaint = v)));
+      clinicalGrid.appendChild(
+        labeledInput("Medical necessity notes", c.medicalNecessityNotes, (v) => (c.medicalNecessityNotes = v), true)
+      );
+      clinicalFieldset.appendChild(clinicalGrid);
+      claimFormEl.appendChild(clinicalFieldset);
+
+      const diagnosesFieldset = document.createElement("fieldset");
+      const diagnosesLegend = document.createElement("legend");
+      diagnosesLegend.textContent = "Diagnoses (ICD-10)";
+      diagnosesFieldset.appendChild(diagnosesLegend);
+      renderEditableTable(
+        diagnosesFieldset,
+        ["Pointer", "Code", "Description"],
+        c.diagnoses,
+        ["pointer", "code", "description"],
+        null,
+        () => c.diagnoses.push({ pointer: "", code: "", description: "" }),
+        "Add diagnosis"
+      );
+      claimFormEl.appendChild(diagnosesFieldset);
+
+      const linesFieldset = document.createElement("fieldset");
+      const linesLegend = document.createElement("legend");
+      linesLegend.textContent = "Service lines (CPT)";
+      linesFieldset.appendChild(linesLegend);
+      renderEditableTable(
+        linesFieldset,
+        ["Code", "Description", "Diagnosis pointer(s)", "Units"],
+        c.serviceLines,
+        ["code", "description", "diagnosisPointers", "units"],
+        null,
+        () => c.serviceLines.push({ code: "", description: "", diagnosisPointers: "", units: 1 }),
+        "Add service line"
+      );
+      claimFormEl.appendChild(linesFieldset);
+    }
   </script>
 </body>
 </html>

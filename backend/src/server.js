@@ -6,6 +6,7 @@ import cors from "cors";
 import Anthropic from "@anthropic-ai/sdk";
 import { extractClinicalFacts } from "./pipeline/extract.js";
 import { suggestCodes } from "./pipeline/suggestCodes.js";
+import { populateClaim } from "./pipeline/populateClaim.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIR = path.join(__dirname, "..", "..", "frontend");
@@ -66,6 +67,25 @@ app.post("/api/suggest-codes", async (req, res) => {
   } catch (err) {
     console.error("Code suggestion failed:", err);
     res.status(502).json({ error: "Code suggestion failed. See server logs for details." });
+  }
+});
+
+app.post("/api/populate-claim", (req, res) => {
+  const { facts, codes } = req.body || {};
+
+  if (!facts || typeof facts !== "object") {
+    return res.status(400).json({ error: "Request body must include a 'facts' object (the extraction output)." });
+  }
+  if (!Array.isArray(codes)) {
+    return res.status(400).json({ error: "Request body must include a 'codes' array (the code suggestions)." });
+  }
+
+  try {
+    const claim = populateClaim(facts, codes);
+    res.json({ claim });
+  } catch (err) {
+    console.error("Claim population failed:", err);
+    res.status(500).json({ error: "Claim population failed. See server logs for details." });
   }
 });
 
