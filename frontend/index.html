@@ -62,8 +62,8 @@
     <h2>1. Transcript</h2>
     <textarea id="transcript" placeholder="Paste a sample encounter transcript here..."></textarea>
     <br />
-    <button id="extractBtn">Extract clinical facts →</button>
-    <p class="hint">This carries you all the way through: facts → codes → claim, automatically, landing on the finished draft. Jump to any tab any time to check in, edit, or re-run just that step.</p>
+    <button id="extractBtn">Extract clinical facts</button>
+    <p class="hint">Fills in the Facts tab. Jump to any tab any time — nothing here navigates you anywhere automatically.</p>
     <div id="extractStatus" class="status"></div>
   </div>
 
@@ -76,7 +76,7 @@
   <div id="panelCodes" class="panel">
     <h2>3. Suggested ICD-10 / CPT codes</h2>
     <p class="hint">Suggestions only — sanity-check before use, not validated against a real coding rule set. Uses whatever is currently on the Facts tab. You can also add/edit/remove codes by hand below.</p>
-    <button id="suggestCodesBtn">Suggest codes from current facts →</button>
+    <button id="suggestCodesBtn">Suggest codes from current facts</button>
     <div id="codesStatus" class="status"></div>
     <div id="codesTableContainer"></div>
   </div>
@@ -106,7 +106,6 @@
     };
 
     let currentTab = "transcript";
-    let cascadeActive = false;
 
     const tabButtons = Array.from(document.querySelectorAll(".tab-btn"));
     const panels = {
@@ -162,18 +161,7 @@
       });
     }
 
-    tabButtons.forEach((btn) =>
-      btn.addEventListener("click", () => {
-        // A manual tab click always wins over the auto-cascade's own scheduled
-        // tab switches -- cancel whatever's left of it rather than racing.
-        cascadeActive = false;
-        showTab(btn.dataset.tab);
-      })
-    );
-
-    function delay(ms) {
-      return new Promise((resolve) => setTimeout(resolve, ms));
-    }
+    tabButtons.forEach((btn) => btn.addEventListener("click", () => showTab(btn.dataset.tab)));
 
     // ---- Transcript tab ----
 
@@ -209,35 +197,13 @@
 
         state.facts = data.facts;
         renderFactsForm();
-        extractStatusEl.textContent = "Done.";
+        extractStatusEl.textContent = "Done — see the Facts tab.";
         extractStatusEl.className = "status";
         renderTabBar();
-
-        // Carry the user through the rest of the pipeline automatically,
-        // so one click on Extract goes all the way to a populated claim --
-        // but a manual tab click anywhere in here (see the tab-bar handler
-        // above, which clears cascadeActive) always cancels the rest of it.
-        cascadeActive = true;
-        await delay(500);
-        if (!cascadeActive) return;
-        showTab("facts");
-
-        await delay(500);
-        if (!cascadeActive) return;
-        showTab("codes");
-        const codesOk = await runSuggestCodes();
-        if (!codesOk || !cascadeActive) return;
-
-        await delay(500);
-        if (!cascadeActive) return;
-        showTab("claim");
-        await runPopulateClaim();
-        cascadeActive = false;
       } catch (err) {
-        console.error("Extract pipeline error:", err);
+        console.error("Extract error:", err);
         extractStatusEl.textContent = "Something went wrong: " + err.message;
         extractStatusEl.className = "status error";
-        cascadeActive = false;
       } finally {
         extractBtn.disabled = false;
       }

@@ -16,7 +16,7 @@ npm install
 npm start
 ```
 
-Then open http://localhost:3000 — four tabs (Transcript, Facts, Codes, Claim & Review) share one underlying data model, so you can jump to any tab directly. Clicking **Extract clinical facts** on the Transcript tab automatically carries you through the whole pipeline (facts → codes → claim), landing on the finished draft. Each tab's action button also works standalone if you jump to it directly and re-run just that step — on whatever is currently in the shared data, whether it got there via Claude or by hand-editing.
+Then open http://localhost:3000 — four tabs (Transcript, Facts, Codes, Claim & Review) share one underlying data model, so you can jump to any tab directly. Every action button (Extract, Suggest codes, Populate claim) only does its own step and never navigates you anywhere — it runs against whatever is currently in the shared data (whether that got there via Claude or by hand-editing) and stays put so you stay in control of where you are.
 
 ### Status
 
