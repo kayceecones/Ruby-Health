@@ -4,16 +4,15 @@
   <meta charset="utf-8" />
   <title>Ruby Health — Encounter to Claim</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #1a1a1a; }
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; color: #1a1a1a; }
     h1 { font-size: 1.25rem; }
     h2 { font-size: 1.05rem; }
     textarea { width: 100%; height: 220px; font-family: inherit; font-size: 0.95rem; padding: 8px; box-sizing: border-box; }
-    button { margin-top: 12px; padding: 8px 16px; font-size: 0.95rem; cursor: pointer; }
+    button { padding: 8px 16px; font-size: 0.95rem; cursor: pointer; }
     button:disabled { cursor: not-allowed; opacity: 0.6; }
     pre { background: #f4f4f4; padding: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
-    #status, #codesStatus, #claimStatus { margin-top: 12px; font-size: 0.9rem; }
-    #status.error, #codesStatus.error, #claimStatus.error { color: #b00020; }
-    section { margin-top: 32px; padding-top: 16px; border-top: 1px solid #ddd; }
+    .status { margin-top: 12px; font-size: 0.9rem; }
+    .status.error { color: #b00020; }
     table { border-collapse: collapse; width: 100%; margin-top: 8px; }
     th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
     th { font-size: 0.85rem; color: #555; }
@@ -24,23 +23,22 @@
     fieldset { margin-top: 16px; border: 1px solid #ddd; }
     legend { font-weight: 600; font-size: 0.9rem; }
     .row-input { width: 100%; box-sizing: border-box; font-family: inherit; font-size: 0.9rem; padding: 4px; }
-    .remove-row { padding: 4px 8px; margin-top: 0; font-size: 0.8rem; }
+    .remove-row { padding: 4px 8px; font-size: 0.8rem; }
     .add-row { padding: 4px 10px; margin-top: 8px; font-size: 0.85rem; }
-    #claimNote { font-size: 0.85rem; font-style: italic; color: #555; margin-top: 4px; }
+    .hint { font-size: 0.85rem; font-style: italic; color: #555; }
 
-    #stepIndicator { display: flex; align-items: center; margin: 24px 0; }
-    .step-chip { display: flex; align-items: center; gap: 8px; }
-    .step-chip .dot {
-      width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-      font-size: 0.8rem; font-weight: 600; border: 2px solid #ccc; color: #888; background: #fff; flex-shrink: 0;
+    #tabBar { display: flex; gap: 8px; margin: 24px 0; border-bottom: 1px solid #ddd; padding-bottom: 0; flex-wrap: wrap; }
+    .tab-btn {
+      margin: 0; padding: 10px 14px; font-size: 0.9rem; background: none; border: none; border-bottom: 3px solid transparent;
+      color: #666; border-radius: 0;
     }
-    .step-chip .label { font-size: 0.8rem; color: #888; white-space: nowrap; }
-    .step-chip.active .dot { border-color: #1a6fd1; color: #1a6fd1; }
-    .step-chip.active .label { color: #1a1a1a; font-weight: 600; }
-    .step-chip.done .dot { border-color: #1f9254; background: #1f9254; color: #fff; }
-    .step-chip.done .label { color: #1f9254; }
-    .step-connector { flex: 1; height: 2px; background: #ccc; margin: 0 8px; }
-    .step-connector.done { background: #1f9254; }
+    .tab-btn:hover { color: #1a1a1a; background: #f4f4f4; }
+    .tab-btn.active { color: #1a6fd1; border-bottom-color: #1a6fd1; font-weight: 600; }
+    .tab-btn .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: #ccc; }
+    .tab-btn.has-data .dot { background: #1f9254; }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
 
     #reviewActions { margin-top: 16px; }
     #reviewedBadge {
@@ -50,60 +48,82 @@
   </style>
 </head>
 <body>
-  <h1>Ruby Health — encounter to claim, step by step</h1>
-  <p>Paste a synthetic patient-provider encounter transcript below. Never use real patient data — this build has no compliance layer.</p>
+  <h1>Ruby Health — encounter to claim</h1>
+  <p>Synthetic demo data only — never real patient data, this build has no compliance layer. Jump to any tab any time; every tab reads and writes the same underlying data, so nothing is locked behind a previous step.</p>
 
-  <div id="stepIndicator"></div>
+  <div id="tabBar">
+    <button class="tab-btn" data-tab="transcript">Transcript</button>
+    <button class="tab-btn" data-tab="facts">Facts</button>
+    <button class="tab-btn" data-tab="codes">Codes</button>
+    <button class="tab-btn" data-tab="claim">Claim &amp; Review</button>
+  </div>
 
-  <textarea id="transcript" placeholder="Paste a sample encounter transcript here..."></textarea>
-  <br />
-  <button id="submit">Extract clinical facts</button>
-  <div id="status"></div>
-  <pre id="output"></pre>
+  <div id="panelTranscript" class="panel">
+    <h2>1. Transcript</h2>
+    <textarea id="transcript" placeholder="Paste a sample encounter transcript here..."></textarea>
+    <br />
+    <button id="extractBtn">Extract clinical facts →</button>
+    <div id="extractStatus" class="status"></div>
+  </div>
 
-  <section id="codesSection" style="display: none;">
-    <h2>Suggested ICD-10 / CPT codes</h2>
-    <p>Suggestions only — sanity-check before use, not validated against a real coding rule set.</p>
-    <button id="suggestCodesBtn">Suggest codes</button>
-    <div id="codesStatus"></div>
-    <table id="codesTable" style="display: none;">
-      <thead>
-        <tr><th>Code</th><th>Type</th><th>Description</th><th>Rationale</th></tr>
-      </thead>
-      <tbody id="codesTableBody"></tbody>
-    </table>
-  </section>
+  <div id="panelFacts" class="panel">
+    <h2>2. Clinical facts</h2>
+    <p class="hint">Auto-filled by "Extract clinical facts" on the Transcript tab, or edit/fill in by hand — either way, this is what feeds the Codes and Claim tabs.</p>
+    <div id="factsForm"></div>
+  </div>
 
-  <section id="claimSection" style="display: none;">
-    <h2>Claim draft &amp; review</h2>
-    <p id="claimNote">Draft only — review and edit everything below. Patient/provider/payer fields are placeholders since no real patient is involved. Nothing here is submitted anywhere.</p>
-    <button id="populateClaimBtn">Populate claim</button>
-    <div id="claimStatus"></div>
+  <div id="panelCodes" class="panel">
+    <h2>3. Suggested ICD-10 / CPT codes</h2>
+    <p class="hint">Suggestions only — sanity-check before use, not validated against a real coding rule set. Uses whatever is currently on the Facts tab. You can also add/edit/remove codes by hand below.</p>
+    <button id="suggestCodesBtn">Suggest codes from current facts</button>
+    <div id="codesStatus" class="status"></div>
+    <div id="codesTableContainer"></div>
+  </div>
+
+  <div id="panelClaim" class="panel">
+    <h2>4. Claim draft &amp; review</h2>
+    <p class="hint">Draft only — patient/provider/payer fields are placeholders since no real patient is involved. Nothing here is submitted anywhere.</p>
+    <button id="populateClaimBtn">Populate claim from current facts + codes</button>
+    <div id="claimStatus" class="status"></div>
     <div id="claimForm"></div>
     <div id="reviewActions" style="display: none;">
       <button id="markReviewedBtn">Mark as reviewed</button>
       <button id="editAgainBtn" style="display: none;">Edit again</button>
       <div id="reviewedBadge">✓ Reviewed — draft only, nothing was submitted anywhere.</div>
     </div>
-  </section>
+  </div>
 
   <script>
-    const STEPS = ["Transcript → Facts", "Codes", "Claim", "Review"];
+    const TABS = ["transcript", "facts", "codes", "claim"];
 
-    const stepIndicatorEl = document.getElementById("stepIndicator");
+    const state = {
+      transcript: "",
+      facts: { chiefComplaint: "", symptoms: [], diagnosesDiscussed: [], proceduresPerformed: [], medicalNecessityLanguage: [] },
+      codes: [],
+      claim: null,
+      reviewed: false,
+    };
+
+    let currentTab = "transcript";
+
+    const tabButtons = Array.from(document.querySelectorAll(".tab-btn"));
+    const panels = {
+      transcript: document.getElementById("panelTranscript"),
+      facts: document.getElementById("panelFacts"),
+      codes: document.getElementById("panelCodes"),
+      claim: document.getElementById("panelClaim"),
+    };
 
     const transcriptEl = document.getElementById("transcript");
-    const submitEl = document.getElementById("submit");
-    const statusEl = document.getElementById("status");
-    const outputEl = document.getElementById("output");
+    const extractBtn = document.getElementById("extractBtn");
+    const extractStatusEl = document.getElementById("extractStatus");
 
-    const codesSection = document.getElementById("codesSection");
+    const factsFormEl = document.getElementById("factsForm");
+
     const suggestCodesBtn = document.getElementById("suggestCodesBtn");
     const codesStatusEl = document.getElementById("codesStatus");
-    const codesTable = document.getElementById("codesTable");
-    const codesTableBody = document.getElementById("codesTableBody");
+    const codesTableContainer = document.getElementById("codesTableContainer");
 
-    const claimSection = document.getElementById("claimSection");
     const populateClaimBtn = document.getElementById("populateClaimBtn");
     const claimStatusEl = document.getElementById("claimStatus");
     const claimFormEl = document.getElementById("claimForm");
@@ -112,60 +132,52 @@
     const editAgainBtn = document.getElementById("editAgainBtn");
     const reviewedBadgeEl = document.getElementById("reviewedBadge");
 
-    let lastFacts = null;
-    let lastCodes = null;
-    let claimState = null;
-    let reviewed = false;
+    function showTab(tab) {
+      currentTab = tab;
+      for (const t of TABS) {
+        panels[t].classList.toggle("active", t === tab);
+      }
+      renderTabBar();
+    }
 
-    function renderStepIndicator() {
-      const completed = [Boolean(lastFacts), Boolean(lastCodes), Boolean(claimState), reviewed];
-      let active = completed.findIndex((c) => !c);
-      if (active === -1) active = completed.length - 1;
+    function hasFacts() {
+      const f = state.facts;
+      return Boolean(f.chiefComplaint.trim()) || [f.symptoms, f.diagnosesDiscussed, f.proceduresPerformed, f.medicalNecessityLanguage].some((a) => a.length);
+    }
 
-      stepIndicatorEl.innerHTML = "";
-      STEPS.forEach((label, i) => {
-        if (i > 0) {
-          const connector = document.createElement("div");
-          connector.className = "step-connector" + (completed[i - 1] ? " done" : "");
-          stepIndicatorEl.appendChild(connector);
-        }
-        const chip = document.createElement("div");
-        chip.className = "step-chip" + (completed[i] ? " done" : i === active ? " active" : "");
-        const dot = document.createElement("div");
-        dot.className = "dot";
-        dot.textContent = completed[i] ? "✓" : String(i + 1);
-        const label_ = document.createElement("div");
-        label_.className = "label";
-        label_.textContent = label;
-        chip.appendChild(dot);
-        chip.appendChild(label_);
-        stepIndicatorEl.appendChild(chip);
+    function renderTabBar() {
+      const hasData = {
+        transcript: state.transcript.trim().length > 0,
+        facts: hasFacts(),
+        codes: state.codes.length > 0,
+        claim: Boolean(state.claim),
+      };
+      tabButtons.forEach((btn) => {
+        const t = btn.dataset.tab;
+        btn.classList.toggle("active", t === currentTab);
+        btn.classList.toggle("has-data", hasData[t]);
       });
     }
 
-    submitEl.addEventListener("click", async () => {
-      const transcript = transcriptEl.value.trim();
+    tabButtons.forEach((btn) => btn.addEventListener("click", () => showTab(btn.dataset.tab)));
+
+    // ---- Transcript tab ----
+
+    transcriptEl.addEventListener("input", () => {
+      state.transcript = transcriptEl.value;
+    });
+
+    extractBtn.addEventListener("click", async () => {
+      const transcript = state.transcript.trim();
       if (!transcript) {
-        statusEl.textContent = "Paste a transcript first.";
-        statusEl.className = "error";
+        extractStatusEl.textContent = "Paste a transcript first.";
+        extractStatusEl.className = "status error";
         return;
       }
 
-      submitEl.disabled = true;
-      statusEl.textContent = "Extracting...";
-      statusEl.className = "";
-      outputEl.textContent = "";
-      codesSection.style.display = "none";
-      codesTable.style.display = "none";
-      codesStatusEl.textContent = "";
-      claimSection.style.display = "none";
-      claimFormEl.innerHTML = "";
-      claimStatusEl.textContent = "";
-      resetReviewState();
-      lastFacts = null;
-      lastCodes = null;
-      claimState = null;
-      renderStepIndicator();
+      extractBtn.disabled = true;
+      extractStatusEl.textContent = "Extracting...";
+      extractStatusEl.className = "status";
 
       try {
         const res = await fetch("/api/extract", {
@@ -176,145 +188,29 @@
         const data = await res.json();
 
         if (!res.ok) {
-          statusEl.textContent = data.error || "Extraction failed.";
-          statusEl.className = "error";
+          extractStatusEl.textContent = data.error || "Extraction failed.";
+          extractStatusEl.className = "status error";
           return;
         }
 
-        statusEl.textContent = "Done.";
-        outputEl.textContent = JSON.stringify(data.facts, null, 2);
-        lastFacts = data.facts;
-        codesSection.style.display = "block";
+        state.facts = data.facts;
+        renderFactsForm();
+        extractStatusEl.textContent = "Done — see the Facts tab.";
+        extractStatusEl.className = "status";
+        renderTabBar();
       } catch (err) {
-        statusEl.textContent = "Network error: " + err.message;
-        statusEl.className = "error";
+        extractStatusEl.textContent = "Network error: " + err.message;
+        extractStatusEl.className = "status error";
       } finally {
-        submitEl.disabled = false;
-        renderStepIndicator();
+        extractBtn.disabled = false;
       }
     });
 
-    suggestCodesBtn.addEventListener("click", async () => {
-      if (!lastFacts) return;
+    // ---- Facts tab ----
 
-      suggestCodesBtn.disabled = true;
-      codesStatusEl.textContent = "Suggesting codes...";
-      codesStatusEl.className = "";
-      codesTable.style.display = "none";
-      codesTableBody.innerHTML = "";
-
-      try {
-        const res = await fetch("/api/suggest-codes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ facts: lastFacts }),
-        });
-        const data = await res.json();
-
-        if (!res.ok) {
-          codesStatusEl.textContent = data.error || "Code suggestion failed.";
-          codesStatusEl.className = "error";
-          return;
-        }
-
-        codesStatusEl.textContent = data.suggestions.length ? "" : "No confident code suggestions.";
-        for (const s of data.suggestions) {
-          const row = document.createElement("tr");
-          const codeCell = document.createElement("td");
-          const codeEl = document.createElement("code");
-          codeEl.textContent = s.code;
-          codeCell.appendChild(codeEl);
-          row.appendChild(codeCell);
-          for (const value of [s.codeType, s.description, s.rationale]) {
-            const cell = document.createElement("td");
-            cell.textContent = value;
-            row.appendChild(cell);
-          }
-          codesTableBody.appendChild(row);
-        }
-        codesTable.style.display = data.suggestions.length ? "table" : "none";
-        lastCodes = data.suggestions;
-        claimSection.style.display = "block";
-        claimFormEl.innerHTML = "";
-        claimStatusEl.textContent = "";
-        claimState = null;
-        resetReviewState();
-      } catch (err) {
-        codesStatusEl.textContent = "Network error: " + err.message;
-        codesStatusEl.className = "error";
-      } finally {
-        suggestCodesBtn.disabled = false;
-        renderStepIndicator();
-      }
-    });
-
-    populateClaimBtn.addEventListener("click", async () => {
-      if (!lastFacts || !lastCodes) return;
-
-      populateClaimBtn.disabled = true;
-      claimStatusEl.textContent = "Populating claim...";
-      claimStatusEl.className = "";
-      claimFormEl.innerHTML = "";
-      resetReviewState();
-
-      try {
-        const res = await fetch("/api/populate-claim", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ facts: lastFacts, codes: lastCodes }),
-        });
-        const data = await res.json();
-
-        if (!res.ok) {
-          claimStatusEl.textContent = data.error || "Claim population failed.";
-          claimStatusEl.className = "error";
-          return;
-        }
-
-        claimStatusEl.textContent = "";
-        claimState = data.claim;
-        renderClaimForm();
-        reviewActionsEl.style.display = "block";
-      } catch (err) {
-        claimStatusEl.textContent = "Network error: " + err.message;
-        claimStatusEl.className = "error";
-      } finally {
-        populateClaimBtn.disabled = false;
-        renderStepIndicator();
-      }
-    });
-
-    function resetReviewState() {
-      reviewed = false;
-      reviewActionsEl.style.display = "none";
-      markReviewedBtn.style.display = "inline-block";
-      editAgainBtn.style.display = "none";
-      reviewedBadgeEl.style.display = "none";
-      setClaimEditable(true);
+    function linesToArray(text) {
+      return text.split("\n").map((s) => s.trim()).filter(Boolean);
     }
-
-    function setClaimEditable(editable) {
-      const controls = claimFormEl.querySelectorAll("input, textarea, button");
-      controls.forEach((el) => (el.disabled = !editable));
-    }
-
-    markReviewedBtn.addEventListener("click", () => {
-      reviewed = true;
-      setClaimEditable(false);
-      markReviewedBtn.style.display = "none";
-      editAgainBtn.style.display = "inline-block";
-      reviewedBadgeEl.style.display = "block";
-      renderStepIndicator();
-    });
-
-    editAgainBtn.addEventListener("click", () => {
-      reviewed = false;
-      setClaimEditable(true);
-      markReviewedBtn.style.display = "inline-block";
-      editAgainBtn.style.display = "none";
-      reviewedBadgeEl.style.display = "none";
-      renderStepIndicator();
-    });
 
     function labeledInput(labelText, value, onChange, multiline) {
       const label = document.createElement("label");
@@ -323,12 +219,41 @@
       if (!multiline) input.type = "text";
       else input.rows = 3;
       input.value = value || "";
-      input.addEventListener("input", (e) => onChange(e.target.value));
+      input.addEventListener("input", (e) => {
+        onChange(e.target.value);
+        renderTabBar();
+      });
       label.appendChild(input);
       return label;
     }
 
-    function renderEditableTable(container, headers, rows, fields, onRemove, onAdd, addLabel) {
+    function renderFactsForm() {
+      factsFormEl.innerHTML = "";
+      const f = state.facts;
+
+      const grid = document.createElement("div");
+      grid.className = "field-grid";
+      grid.style.gridTemplateColumns = "1fr";
+      grid.appendChild(labeledInput("Chief complaint", f.chiefComplaint, (v) => (f.chiefComplaint = v)));
+      grid.appendChild(
+        labeledInput("Symptoms (one per line)", f.symptoms.join("\n"), (v) => (f.symptoms = linesToArray(v)), true)
+      );
+      grid.appendChild(
+        labeledInput("Diagnoses discussed (one per line)", f.diagnosesDiscussed.join("\n"), (v) => (f.diagnosesDiscussed = linesToArray(v)), true)
+      );
+      grid.appendChild(
+        labeledInput("Procedures performed (one per line)", f.proceduresPerformed.join("\n"), (v) => (f.proceduresPerformed = linesToArray(v)), true)
+      );
+      grid.appendChild(
+        labeledInput("Medical necessity language (one per line)", f.medicalNecessityLanguage.join("\n"), (v) => (f.medicalNecessityLanguage = linesToArray(v)), true)
+      );
+      factsFormEl.appendChild(grid);
+    }
+
+    // ---- Codes tab ----
+
+    function renderEditableTable(container, headers, rows, fields, onAdd, addLabel) {
+      container.innerHTML = "";
       const table = document.createElement("table");
       const thead = document.createElement("thead");
       const headRow = document.createElement("tr");
@@ -352,6 +277,7 @@
           input.value = row[field] ?? "";
           input.addEventListener("input", (e) => {
             row[field] = field === "units" ? Number(e.target.value) || 0 : e.target.value;
+            renderTabBar();
           });
           td.appendChild(input);
           tr.appendChild(td);
@@ -363,7 +289,8 @@
         removeBtn.textContent = "Remove";
         removeBtn.addEventListener("click", () => {
           rows.splice(i, 1);
-          renderClaimForm();
+          renderEditableTable(container, headers, rows, fields, onAdd, addLabel);
+          renderTabBar();
         });
         actionTd.appendChild(removeBtn);
         tr.appendChild(actionTd);
@@ -378,99 +305,233 @@
       addBtn.textContent = addLabel;
       addBtn.addEventListener("click", () => {
         onAdd();
-        renderClaimForm();
+        renderEditableTable(container, headers, rows, fields, onAdd, addLabel);
+        renderTabBar();
       });
       container.appendChild(addBtn);
     }
 
+    function renderCodesTable() {
+      renderEditableTable(
+        codesTableContainer,
+        ["Code", "Type", "Description", "Rationale"],
+        state.codes,
+        ["code", "codeType", "description", "rationale"],
+        () => state.codes.push({ code: "", codeType: "ICD-10", description: "", rationale: "" }),
+        "Add code"
+      );
+    }
+
+    suggestCodesBtn.addEventListener("click", async () => {
+      if (!hasFacts()) {
+        codesStatusEl.textContent = "Add some clinical facts first (on the Facts tab), or extract them from a transcript.";
+        codesStatusEl.className = "status error";
+        return;
+      }
+
+      suggestCodesBtn.disabled = true;
+      codesStatusEl.textContent = "Suggesting codes...";
+      codesStatusEl.className = "status";
+
+      try {
+        const res = await fetch("/api/suggest-codes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ facts: state.facts }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          codesStatusEl.textContent = data.error || "Code suggestion failed.";
+          codesStatusEl.className = "status error";
+          return;
+        }
+
+        state.codes = data.suggestions;
+        renderCodesTable();
+        codesStatusEl.textContent = data.suggestions.length ? "Done." : "No confident code suggestions — add some by hand below if you like.";
+        codesStatusEl.className = "status";
+        renderTabBar();
+      } catch (err) {
+        codesStatusEl.textContent = "Network error: " + err.message;
+        codesStatusEl.className = "status error";
+      } finally {
+        suggestCodesBtn.disabled = false;
+      }
+    });
+
+    // ---- Claim tab ----
+
+    populateClaimBtn.addEventListener("click", async () => {
+      if (!state.codes.length) {
+        claimStatusEl.textContent = "Add at least one code first (on the Codes tab).";
+        claimStatusEl.className = "status error";
+        return;
+      }
+
+      populateClaimBtn.disabled = true;
+      claimStatusEl.textContent = "Populating claim...";
+      claimStatusEl.className = "status";
+
+      try {
+        const res = await fetch("/api/populate-claim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ facts: state.facts, codes: state.codes }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          claimStatusEl.textContent = data.error || "Claim population failed.";
+          claimStatusEl.className = "status error";
+          return;
+        }
+
+        claimStatusEl.textContent = "";
+        state.claim = data.claim;
+        resetReviewState();
+        renderClaimForm();
+        reviewActionsEl.style.display = "block";
+        renderTabBar();
+      } catch (err) {
+        claimStatusEl.textContent = "Network error: " + err.message;
+        claimStatusEl.className = "status error";
+      } finally {
+        populateClaimBtn.disabled = false;
+      }
+    });
+
+    function resetReviewState() {
+      state.reviewed = false;
+      markReviewedBtn.style.display = "inline-block";
+      editAgainBtn.style.display = "none";
+      reviewedBadgeEl.style.display = "none";
+      setClaimEditable(true);
+    }
+
+    function setClaimEditable(editable) {
+      claimFormEl.querySelectorAll("input, textarea, button").forEach((el) => (el.disabled = !editable));
+    }
+
+    markReviewedBtn.addEventListener("click", () => {
+      state.reviewed = true;
+      setClaimEditable(false);
+      markReviewedBtn.style.display = "none";
+      editAgainBtn.style.display = "inline-block";
+      reviewedBadgeEl.style.display = "block";
+      renderTabBar();
+    });
+
+    editAgainBtn.addEventListener("click", () => {
+      state.reviewed = false;
+      setClaimEditable(true);
+      markReviewedBtn.style.display = "inline-block";
+      editAgainBtn.style.display = "none";
+      reviewedBadgeEl.style.display = "none";
+      renderTabBar();
+    });
+
+    function claimLabeledInput(labelText, value, onChange, multiline) {
+      const label = document.createElement("label");
+      label.textContent = labelText;
+      const input = document.createElement(multiline ? "textarea" : "input");
+      if (!multiline) input.type = "text";
+      else input.rows = 3;
+      input.value = value || "";
+      input.addEventListener("input", (e) => onChange(e.target.value));
+      label.appendChild(input);
+      return label;
+    }
+
     function renderClaimForm() {
       claimFormEl.innerHTML = "";
-      if (!claimState) return;
-      const c = claimState;
+      if (!state.claim) {
+        const hint = document.createElement("p");
+        hint.className = "hint";
+        hint.textContent = "No claim draft yet — click \"Populate claim\" above.";
+        claimFormEl.appendChild(hint);
+        return;
+      }
+      const c = state.claim;
 
       const patientFieldset = document.createElement("fieldset");
-      const patientLegend = document.createElement("legend");
-      patientLegend.textContent = "Patient (placeholder)";
-      patientFieldset.appendChild(patientLegend);
+      patientFieldset.innerHTML = "<legend>Patient (placeholder)</legend>";
       const patientGrid = document.createElement("div");
       patientGrid.className = "field-grid";
-      patientGrid.appendChild(labeledInput("Name", c.patient.name, (v) => (c.patient.name = v)));
-      patientGrid.appendChild(labeledInput("Date of birth", c.patient.dob, (v) => (c.patient.dob = v)));
-      patientGrid.appendChild(labeledInput("Sex", c.patient.sex, (v) => (c.patient.sex = v)));
-      patientGrid.appendChild(labeledInput("Member ID", c.patient.memberId, (v) => (c.patient.memberId = v)));
+      patientGrid.appendChild(claimLabeledInput("Name", c.patient.name, (v) => (c.patient.name = v)));
+      patientGrid.appendChild(claimLabeledInput("Date of birth", c.patient.dob, (v) => (c.patient.dob = v)));
+      patientGrid.appendChild(claimLabeledInput("Sex", c.patient.sex, (v) => (c.patient.sex = v)));
+      patientGrid.appendChild(claimLabeledInput("Member ID", c.patient.memberId, (v) => (c.patient.memberId = v)));
       patientFieldset.appendChild(patientGrid);
       claimFormEl.appendChild(patientFieldset);
 
       const providerFieldset = document.createElement("fieldset");
-      const providerLegend = document.createElement("legend");
-      providerLegend.textContent = "Provider (placeholder)";
-      providerFieldset.appendChild(providerLegend);
+      providerFieldset.innerHTML = "<legend>Provider (placeholder)</legend>";
       const providerGrid = document.createElement("div");
       providerGrid.className = "field-grid";
-      providerGrid.appendChild(labeledInput("Name", c.provider.name, (v) => (c.provider.name = v)));
-      providerGrid.appendChild(labeledInput("NPI", c.provider.npi, (v) => (c.provider.npi = v)));
-      providerGrid.appendChild(labeledInput("Address", c.provider.address, (v) => (c.provider.address = v)));
-      providerGrid.appendChild(labeledInput("Date of service", c.dateOfService, (v) => (c.dateOfService = v)));
+      providerGrid.appendChild(claimLabeledInput("Name", c.provider.name, (v) => (c.provider.name = v)));
+      providerGrid.appendChild(claimLabeledInput("NPI", c.provider.npi, (v) => (c.provider.npi = v)));
+      providerGrid.appendChild(claimLabeledInput("Address", c.provider.address, (v) => (c.provider.address = v)));
+      providerGrid.appendChild(claimLabeledInput("Date of service", c.dateOfService, (v) => (c.dateOfService = v)));
       providerFieldset.appendChild(providerGrid);
       claimFormEl.appendChild(providerFieldset);
 
       const payerFieldset = document.createElement("fieldset");
-      const payerLegend = document.createElement("legend");
-      payerLegend.textContent = "Payer (placeholder)";
-      payerFieldset.appendChild(payerLegend);
+      payerFieldset.innerHTML = "<legend>Payer (placeholder)</legend>";
       const payerGrid = document.createElement("div");
       payerGrid.className = "field-grid";
-      payerGrid.appendChild(labeledInput("Name", c.payer.name, (v) => (c.payer.name = v)));
-      payerGrid.appendChild(labeledInput("Payer ID", c.payer.payerId, (v) => (c.payer.payerId = v)));
+      payerGrid.appendChild(claimLabeledInput("Name", c.payer.name, (v) => (c.payer.name = v)));
+      payerGrid.appendChild(claimLabeledInput("Payer ID", c.payer.payerId, (v) => (c.payer.payerId = v)));
       payerFieldset.appendChild(payerGrid);
       claimFormEl.appendChild(payerFieldset);
 
       const clinicalFieldset = document.createElement("fieldset");
-      const clinicalLegend = document.createElement("legend");
-      clinicalLegend.textContent = "Clinical summary";
-      clinicalFieldset.appendChild(clinicalLegend);
+      clinicalFieldset.innerHTML = "<legend>Clinical summary</legend>";
       const clinicalGrid = document.createElement("div");
       clinicalGrid.className = "field-grid";
       clinicalGrid.style.gridTemplateColumns = "1fr";
-      clinicalGrid.appendChild(labeledInput("Chief complaint", c.chiefComplaint, (v) => (c.chiefComplaint = v)));
+      clinicalGrid.appendChild(claimLabeledInput("Chief complaint", c.chiefComplaint, (v) => (c.chiefComplaint = v)));
       clinicalGrid.appendChild(
-        labeledInput("Medical necessity notes", c.medicalNecessityNotes, (v) => (c.medicalNecessityNotes = v), true)
+        claimLabeledInput("Medical necessity notes", c.medicalNecessityNotes, (v) => (c.medicalNecessityNotes = v), true)
       );
       clinicalFieldset.appendChild(clinicalGrid);
       claimFormEl.appendChild(clinicalFieldset);
 
       const diagnosesFieldset = document.createElement("fieldset");
-      const diagnosesLegend = document.createElement("legend");
-      diagnosesLegend.textContent = "Diagnoses (ICD-10)";
-      diagnosesFieldset.appendChild(diagnosesLegend);
+      diagnosesFieldset.innerHTML = "<legend>Diagnoses (ICD-10)</legend>";
+      const diagnosesContainer = document.createElement("div");
+      diagnosesFieldset.appendChild(diagnosesContainer);
       renderEditableTable(
-        diagnosesFieldset,
+        diagnosesContainer,
         ["Pointer", "Code", "Description"],
         c.diagnoses,
         ["pointer", "code", "description"],
-        null,
         () => c.diagnoses.push({ pointer: "", code: "", description: "" }),
         "Add diagnosis"
       );
       claimFormEl.appendChild(diagnosesFieldset);
 
       const linesFieldset = document.createElement("fieldset");
-      const linesLegend = document.createElement("legend");
-      linesLegend.textContent = "Service lines (CPT)";
-      linesFieldset.appendChild(linesLegend);
+      linesFieldset.innerHTML = "<legend>Service lines (CPT)</legend>";
+      const linesContainer = document.createElement("div");
+      linesFieldset.appendChild(linesContainer);
       renderEditableTable(
-        linesFieldset,
+        linesContainer,
         ["Code", "Description", "Diagnosis pointer(s)", "Units"],
         c.serviceLines,
         ["code", "description", "diagnosisPointers", "units"],
-        null,
         () => c.serviceLines.push({ code: "", description: "", diagnosisPointers: "", units: 1 }),
         "Add service line"
       );
       claimFormEl.appendChild(linesFieldset);
     }
 
-    renderStepIndicator();
+    // ---- init ----
+
+    renderFactsForm();
+    renderCodesTable();
+    renderClaimForm();
+    showTab("transcript");
   </script>
 </body>
 </html>

@@ -16,7 +16,7 @@ npm install
 npm start
 ```
 
-Then open http://localhost:3000 — paste a synthetic transcript and submit to see the raw clinical-fact extraction JSON from Claude.
+Then open http://localhost:3000 — four tabs (Transcript, Facts, Codes, Claim & Review) share one underlying data model, so you can jump to any tab directly; each tab's action button (Extract, Suggest codes, Populate claim) just runs against whatever is currently on the Facts/Codes tabs, whether it got there via Claude or by hand-editing.
 
 ### Status
 
@@ -24,7 +24,7 @@ Then open http://localhost:3000 — paste a synthetic transcript and submit to s
 - [x] Piece 2: paste transcript → raw Claude extraction JSON, end to end
 - [x] Piece 3: ICD-10/CPT code-suggestion step
 - [x] Piece 4: claim-template population + editable review screen
-- [x] Piece 5: step-by-step reveal UI
+- [x] Piece 5: tabbed, un-gated UI — all steps share one data model, no forced order
 - [ ] Piece 6: live mic capture via Web Speech API
 - [ ] Piece 7 (later, optional): deploy as a shareable link
 
