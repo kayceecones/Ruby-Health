@@ -106,6 +106,7 @@
     };
 
     let currentTab = "transcript";
+    let cascadeActive = false;
 
     const tabButtons = Array.from(document.querySelectorAll(".tab-btn"));
     const panels = {
@@ -161,7 +162,14 @@
       });
     }
 
-    tabButtons.forEach((btn) => btn.addEventListener("click", () => showTab(btn.dataset.tab)));
+    tabButtons.forEach((btn) =>
+      btn.addEventListener("click", () => {
+        // A manual tab click always wins over the auto-cascade's own scheduled
+        // tab switches -- cancel whatever's left of it rather than racing.
+        cascadeActive = false;
+        showTab(btn.dataset.tab);
+      })
+    );
 
     function delay(ms) {
       return new Promise((resolve) => setTimeout(resolve, ms));
@@ -206,21 +214,30 @@
         renderTabBar();
 
         // Carry the user through the rest of the pipeline automatically,
-        // so one click on Extract goes all the way to a populated claim.
+        // so one click on Extract goes all the way to a populated claim --
+        // but a manual tab click anywhere in here (see the tab-bar handler
+        // above, which clears cascadeActive) always cancels the rest of it.
+        cascadeActive = true;
         await delay(500);
+        if (!cascadeActive) return;
         showTab("facts");
-        await delay(500);
-        showTab("codes");
-        const codesOk = await runSuggestCodes();
-        if (!codesOk) return;
 
         await delay(500);
+        if (!cascadeActive) return;
+        showTab("codes");
+        const codesOk = await runSuggestCodes();
+        if (!codesOk || !cascadeActive) return;
+
+        await delay(500);
+        if (!cascadeActive) return;
         showTab("claim");
         await runPopulateClaim();
+        cascadeActive = false;
       } catch (err) {
         console.error("Extract pipeline error:", err);
         extractStatusEl.textContent = "Something went wrong: " + err.message;
         extractStatusEl.className = "status error";
+        cascadeActive = false;
       } finally {
         extractBtn.disabled = false;
       }
