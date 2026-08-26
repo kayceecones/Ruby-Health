@@ -18,6 +18,8 @@ npm start
 
 Then open http://localhost:3000 — four tabs (Transcript, Facts, Codes, Claim & Review) share one underlying data model, so you can jump to any tab directly. Every action button (Extract, Suggest codes, Populate claim) only does its own step and never navigates you anywhere — it runs against whatever is currently in the shared data (whether that got there via Claude or by hand-editing) and stays put so you stay in control of where you are. Everything (transcript, facts, codes, claim, review state) is saved to the browser's `sessionStorage` as you go, so a page reload picks up right where you left off — closing the tab clears it.
 
+On the Transcript tab, the mic button is a single push-to-talk/lock control (Wispr Flow-style): tap once to start talking, tap again quickly (within ~400ms) to lock into hands-free continuous listening, tap once more to stop. Requires Chrome or Edge (Web Speech API support); other browsers fall back to paste-only. Voice audio goes through the browser vendor's speech-recognition backend, not Anthropic's API.
+
 ### Status
 
 - [x] Piece 1: project scaffold (backend + minimal frontend skeleton)
@@ -25,6 +27,6 @@ Then open http://localhost:3000 — four tabs (Transcript, Facts, Codes, Claim &
 - [x] Piece 3: ICD-10/CPT code-suggestion step
 - [x] Piece 4: claim-template population + editable review screen
 - [x] Piece 5: tabbed, un-gated UI — all steps share one data model, no forced order
-- [ ] Piece 6: live mic capture via Web Speech API
+- [x] Piece 6: live mic capture via Web Speech API
 - [ ] Piece 7 (later, optional): deploy as a shareable link
 

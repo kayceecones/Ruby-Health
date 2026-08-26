@@ -40,6 +40,18 @@
     .panel { display: none; }
     .panel.active { display: block; }
 
+    #micControls { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+    .mic-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; font-size: 0.95rem; cursor: pointer;
+      border: 1px solid #1a6fd1; border-radius: 20px; background: #fff; color: #1a6fd1;
+    }
+    .mic-btn:disabled { cursor: not-allowed; opacity: 0.5; }
+    .mic-btn.recording { background: #b00020; border-color: #b00020; color: #fff; animation: mic-pulse 1.4s ease-in-out infinite; }
+    .mic-btn.locked { background: #7a1a9e; border-color: #7a1a9e; color: #fff; animation: none; }
+    @keyframes mic-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+    #micInterim { font-style: italic; color: #888; min-height: 1.2em; margin-top: 4px; }
+
     #reviewActions { margin-top: 16px; }
     #reviewedBadge {
       display: none; margin-top: 12px; padding: 8px 12px; background: #e6f4ea; color: #1f9254;
@@ -49,7 +61,7 @@
 </head>
 <body>
   <h1>Ruby Health — encounter to claim</h1>
-  <p>Synthetic demo data only — never real patient data, this build has no compliance layer. Jump to any tab any time; every tab reads and writes the same underlying data, so nothing is locked behind a previous step. Everything you enter is saved automatically as you go and comes back if you reload — closing this tab clears it.</p>
+  <p>Synthetic demo data only — never real patient data, this build has no compliance layer. Jump to any tab any time; every tab reads and writes the same underlying data, so nothing is locked behind a previous step. Everything you enter is saved automatically as you go and comes back if you reload — closing this tab clears it. Voice capture uses your browser's built-in speech recognition, which may send audio to your browser vendor's cloud service (not Anthropic) to transcribe it — keep that in mind alongside the synthetic-data-only rule.</p>
 
   <div id="tabBar">
     <button class="tab-btn" data-tab="transcript">Transcript</button>
@@ -60,7 +72,13 @@
 
   <div id="panelTranscript" class="panel">
     <h2>1. Transcript</h2>
-    <textarea id="transcript" placeholder="Paste a sample encounter transcript here..."></textarea>
+    <div id="micControls">
+      <button id="micBtn" class="mic-btn" type="button">🎤 Push to talk</button>
+      <span id="micHint" class="hint">Tap to start talking. Tap again quickly to lock (hands-free); tap once more to stop.</span>
+      <span id="micUnsupported" class="hint" style="display:none;">Live mic capture isn't supported in this browser (try Chrome or Edge) — paste a transcript below instead.</span>
+    </div>
+    <textarea id="transcript" placeholder="Paste a sample encounter transcript here, or use the mic above..."></textarea>
+    <div id="micInterim"></div>
     <br />
     <button id="extractBtn">Extract clinical facts</button>
     <p class="hint">Fills in the Facts tab. Jump to any tab any time — nothing here navigates you anywhere automatically.</p>
@@ -142,6 +160,10 @@
     const transcriptEl = document.getElementById("transcript");
     const extractBtn = document.getElementById("extractBtn");
     const extractStatusEl = document.getElementById("extractStatus");
+    const micBtn = document.getElementById("micBtn");
+    const micHintEl = document.getElementById("micHint");
+    const micUnsupportedEl = document.getElementById("micUnsupported");
+    const micInterimEl = document.getElementById("micInterim");
 
     const factsFormEl = document.getElementById("factsForm");
 
@@ -234,6 +256,136 @@
         extractBtn.disabled = false;
       }
     });
+
+    // ---- Mic capture: tap to talk, tap again fast to lock hands-free ----
+    // (Wispr Flow-style control: one button, no modifier keys.)
+
+    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const LOCK_WINDOW_MS = 400;
+
+    let recognition = null;
+    let listening = false;
+    let locked = false;
+    let intentionalStop = false;
+    let recordingStartedAt = 0;
+
+    function updateMicUi() {
+      micBtn.classList.toggle("recording", listening && !locked);
+      micBtn.classList.toggle("locked", listening && locked);
+      if (!listening) {
+        micBtn.textContent = "🎤 Push to talk";
+        micHintEl.textContent = "Tap to start talking. Tap again quickly to lock (hands-free); tap once more to stop.";
+      } else if (locked) {
+        micBtn.textContent = "🔒 Listening (locked) — tap to stop";
+        micHintEl.textContent = "Hands-free — talk as long as you like. Tap the button to stop.";
+      } else {
+        micBtn.textContent = "● Listening — tap to stop";
+        micHintEl.textContent = "Tap again quickly to lock hands-free, or wait — the next tap will stop.";
+      }
+    }
+
+    function appendFinalTranscript(chunk) {
+      const trimmed = chunk.trim();
+      if (!trimmed) return;
+      const sep = state.transcript && !/\s$/.test(state.transcript) ? " " : "";
+      state.transcript += sep + trimmed;
+      transcriptEl.value = state.transcript;
+      renderTabBar();
+    }
+
+    function startListening() {
+      intentionalStop = false;
+      locked = false;
+      recordingStartedAt = Date.now();
+      micInterimEl.textContent = "";
+      try {
+        recognition.start();
+      } catch (e) {
+        // start() throws if recognition is already starting/running; safe to ignore.
+        return;
+      }
+      listening = true;
+      updateMicUi();
+      setTimeout(() => {
+        if (listening && !locked) micHintEl.textContent = "Tap to stop.";
+      }, LOCK_WINDOW_MS);
+    }
+
+    function lockListening() {
+      locked = true;
+      updateMicUi();
+    }
+
+    function stopListening() {
+      intentionalStop = true;
+      locked = false;
+      listening = false;
+      if (recognition) recognition.stop();
+      micInterimEl.textContent = "";
+      updateMicUi();
+    }
+
+    if (!SpeechRecognitionCtor) {
+      micBtn.disabled = true;
+      micBtn.style.display = "none";
+      micHintEl.style.display = "none";
+      micUnsupportedEl.style.display = "inline";
+    } else {
+      recognition = new SpeechRecognitionCtor();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onresult = (event) => {
+        let finalChunk = "";
+        let interim = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) finalChunk += result[0].transcript;
+          else interim += result[0].transcript;
+        }
+        if (finalChunk) appendFinalTranscript(finalChunk);
+        micInterimEl.textContent = interim ? "…" + interim : "";
+      };
+
+      recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+          extractStatusEl.textContent = "Mic permission was denied — allow microphone access to use voice capture.";
+          extractStatusEl.className = "status error";
+          stopListening();
+        }
+        // Other errors (e.g. transient "no-speech") fall through to onend,
+        // which restarts recognition automatically while still listening.
+      };
+
+      recognition.onend = () => {
+        if (listening && !intentionalStop) {
+          // Chrome stops continuous recognition after a silence gap even
+          // with continuous=true; restart transparently so lock mode stays
+          // hands-free instead of silently dying.
+          try {
+            recognition.start();
+          } catch (e) {
+            // Already restarting; ignore.
+          }
+          return;
+        }
+        listening = false;
+        locked = false;
+        updateMicUi();
+      };
+
+      micBtn.addEventListener("click", () => {
+        if (!listening) {
+          startListening();
+        } else if (!locked && Date.now() - recordingStartedAt < LOCK_WINDOW_MS) {
+          lockListening();
+        } else {
+          stopListening();
+        }
+      });
+    }
 
     // ---- Facts tab ----
 
