@@ -52,6 +52,8 @@
     @keyframes mic-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
     #micInterim { font-style: italic; color: #888; min-height: 1.2em; margin-top: 4px; }
 
+    .summary-box { background: #f4f4f4; padding: 10px 12px; border-radius: 4px; font-size: 0.9rem; white-space: pre-wrap; margin-top: 4px; }
+
     #reviewActions { margin-top: 16px; }
     #reviewedBadge {
       display: none; margin-top: 12px; padding: 8px 12px; background: #e6f4ea; color: #1f9254;
@@ -80,8 +82,14 @@
     <textarea id="transcript" placeholder="Paste a sample encounter transcript here, or use the mic above..."></textarea>
     <div id="micInterim"></div>
     <br />
+    <button id="cleanupBtn" type="button">Clean up transcript</button>
     <button id="extractBtn">Extract clinical facts</button>
-    <p class="hint">Fills in the Facts tab. Jump to any tab any time — nothing here navigates you anywhere automatically.</p>
+    <p class="hint">"Clean up" fixes run-on dictation into properly punctuated sentences and adds a quick summary below — handy after using the mic. "Extract clinical facts" fills in the Facts tab and works on raw or cleaned-up text either way. Jump to any tab any time — nothing here navigates you anywhere automatically.</p>
+    <div id="cleanupStatus" class="status"></div>
+    <div id="transcriptSummaryBox" style="display:none;">
+      <p class="hint" style="margin-bottom:4px;"><strong>Summary</strong> (for a quick skim — the transcript above, not this summary, is what extraction actually reads):</p>
+      <div id="transcriptSummaryText" class="summary-box"></div>
+    </div>
     <div id="extractStatus" class="status"></div>
   </div>
 
@@ -117,6 +125,7 @@
 
     const state = {
       transcript: "",
+      transcriptSummary: "",
       facts: { chiefComplaint: "", symptoms: [], diagnosesDiscussed: [], proceduresPerformed: [], medicalNecessityLanguage: [] },
       codes: [],
       claim: null,
@@ -158,6 +167,10 @@
     };
 
     const transcriptEl = document.getElementById("transcript");
+    const cleanupBtn = document.getElementById("cleanupBtn");
+    const cleanupStatusEl = document.getElementById("cleanupStatus");
+    const transcriptSummaryBoxEl = document.getElementById("transcriptSummaryBox");
+    const transcriptSummaryTextEl = document.getElementById("transcriptSummaryText");
     const extractBtn = document.getElementById("extractBtn");
     const extractStatusEl = document.getElementById("extractStatus");
     const micBtn = document.getElementById("micBtn");
@@ -212,9 +225,68 @@
 
     // ---- Transcript tab ----
 
+    function renderTranscriptSummary() {
+      if (state.transcriptSummary) {
+        transcriptSummaryTextEl.textContent = state.transcriptSummary;
+        transcriptSummaryBoxEl.style.display = "block";
+      } else {
+        transcriptSummaryBoxEl.style.display = "none";
+      }
+    }
+
+    function invalidateSummary() {
+      if (state.transcriptSummary) {
+        state.transcriptSummary = "";
+        renderTranscriptSummary();
+      }
+    }
+
     transcriptEl.addEventListener("input", () => {
       state.transcript = transcriptEl.value;
+      invalidateSummary();
       renderTabBar();
+    });
+
+    cleanupBtn.addEventListener("click", async () => {
+      const transcript = state.transcript.trim();
+      if (!transcript) {
+        cleanupStatusEl.textContent = "Paste or dictate a transcript first.";
+        cleanupStatusEl.className = "status error";
+        return;
+      }
+
+      cleanupBtn.disabled = true;
+      cleanupStatusEl.textContent = "Cleaning up...";
+      cleanupStatusEl.className = "status";
+
+      try {
+        const res = await fetch("/api/cleanup-transcript", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          cleanupStatusEl.textContent = data.error || "Cleanup failed.";
+          cleanupStatusEl.className = "status error";
+          return;
+        }
+
+        state.transcript = data.cleanedTranscript;
+        state.transcriptSummary = data.summary;
+        transcriptEl.value = state.transcript;
+        renderTranscriptSummary();
+        cleanupStatusEl.textContent = "Done — punctuation fixed and summary added below.";
+        cleanupStatusEl.className = "status";
+        renderTabBar();
+      } catch (err) {
+        console.error("Cleanup error:", err);
+        cleanupStatusEl.textContent = "Something went wrong: " + err.message;
+        cleanupStatusEl.className = "status error";
+      } finally {
+        cleanupBtn.disabled = false;
+      }
     });
 
     extractBtn.addEventListener("click", async () => {
@@ -290,6 +362,7 @@
       const sep = state.transcript && !/\s$/.test(state.transcript) ? " " : "";
       state.transcript += sep + trimmed;
       transcriptEl.value = state.transcript;
+      invalidateSummary();
       renderTabBar();
     }
 
@@ -726,6 +799,7 @@
 
     loadSavedState();
     transcriptEl.value = state.transcript;
+    renderTranscriptSummary();
     renderFactsForm();
     renderCodesTable();
     renderClaimForm();

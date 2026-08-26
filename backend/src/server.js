@@ -5,6 +5,7 @@ import express from "express";
 import cors from "cors";
 import Anthropic from "@anthropic-ai/sdk";
 import { extractClinicalFacts } from "./pipeline/extract.js";
+import { cleanupTranscript } from "./pipeline/cleanupTranscript.js";
 import { suggestCodes } from "./pipeline/suggestCodes.js";
 import { populateClaim } from "./pipeline/populateClaim.js";
 
@@ -45,6 +46,28 @@ app.post("/api/extract", async (req, res) => {
   } catch (err) {
     console.error("Extraction failed:", err);
     res.status(502).json({ error: "Extraction failed. See server logs for details." });
+  }
+});
+
+app.post("/api/cleanup-transcript", async (req, res) => {
+  const { transcript } = req.body || {};
+
+  if (typeof transcript !== "string" || transcript.trim().length === 0) {
+    return res.status(400).json({ error: "Request body must include a non-empty 'transcript' string." });
+  }
+
+  if (!anthropic) {
+    return res.status(500).json({
+      error: "ANTHROPIC_API_KEY is not configured on the server. Add it to backend/.env and restart.",
+    });
+  }
+
+  try {
+    const { cleanedTranscript, summary } = await cleanupTranscript(anthropic, MODEL, transcript);
+    res.json({ cleanedTranscript, summary });
+  } catch (err) {
+    console.error("Transcript cleanup failed:", err);
+    res.status(502).json({ error: "Transcript cleanup failed. See server logs for details." });
   }
 });
 
