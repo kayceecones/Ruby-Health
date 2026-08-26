@@ -16,7 +16,7 @@ npm install
 npm start
 ```
 
-Then open http://localhost:3000 — four tabs (Transcript, Facts, Codes, Claim & Review) share one underlying data model, so you can jump to any tab directly. Every action button (Extract, Suggest codes, Populate claim) only does its own step and never navigates you anywhere — it runs against whatever is currently in the shared data (whether that got there via Claude or by hand-editing) and stays put so you stay in control of where you are.
+Then open http://localhost:3000 — four tabs (Transcript, Facts, Codes, Claim & Review) share one underlying data model, so you can jump to any tab directly. Every action button (Extract, Suggest codes, Populate claim) only does its own step and never navigates you anywhere — it runs against whatever is currently in the shared data (whether that got there via Claude or by hand-editing) and stays put so you stay in control of where you are. Everything (transcript, facts, codes, claim, review state) is saved to the browser's `sessionStorage` as you go, so a page reload picks up right where you left off — closing the tab clears it.
 
 ### Status
 

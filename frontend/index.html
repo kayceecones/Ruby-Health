@@ -49,7 +49,7 @@
 </head>
 <body>
   <h1>Ruby Health — encounter to claim</h1>
-  <p>Synthetic demo data only — never real patient data, this build has no compliance layer. Jump to any tab any time; every tab reads and writes the same underlying data, so nothing is locked behind a previous step.</p>
+  <p>Synthetic demo data only — never real patient data, this build has no compliance layer. Jump to any tab any time; every tab reads and writes the same underlying data, so nothing is locked behind a previous step. Everything you enter is saved automatically as you go and comes back if you reload — closing this tab clears it.</p>
 
   <div id="tabBar">
     <button class="tab-btn" data-tab="transcript">Transcript</button>
@@ -105,6 +105,30 @@
       reviewed: false,
     };
 
+    // Persisted to sessionStorage, not localStorage: it survives a page
+    // refresh or reopening the tab's history, but clears once the tab is
+    // actually closed, matching "save it unless I close the tab."
+    const STORAGE_KEY = "rubyHealthDemoState";
+
+    function saveState() {
+      try {
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) {
+        console.warn("Could not save state to sessionStorage:", e);
+      }
+    }
+
+    function loadSavedState() {
+      try {
+        const raw = sessionStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        Object.assign(state, parsed);
+      } catch (e) {
+        console.warn("Could not load saved state from sessionStorage:", e);
+      }
+    }
+
     let currentTab = "transcript";
 
     const tabButtons = Array.from(document.querySelectorAll(".tab-btn"));
@@ -159,6 +183,7 @@
         btn.classList.toggle("active", t === currentTab);
         btn.classList.toggle("has-data", hasData[t]);
       });
+      saveState();
     }
 
     tabButtons.forEach((btn) => btn.addEventListener("click", () => showTab(btn.dataset.tab)));
@@ -167,6 +192,7 @@
 
     transcriptEl.addEventListener("input", () => {
       state.transcript = transcriptEl.value;
+      renderTabBar();
     });
 
     extractBtn.addEventListener("click", async () => {
@@ -401,9 +427,9 @@
 
         claimStatusEl.textContent = "";
         state.claim = data.claim;
-        resetReviewState();
+        state.reviewed = false;
         renderClaimForm();
-        reviewActionsEl.style.display = "block";
+        applyReviewUiState();
         renderTabBar();
         return true;
       } catch (err) {
@@ -418,33 +444,31 @@
 
     populateClaimBtn.addEventListener("click", () => runPopulateClaim());
 
-    function resetReviewState() {
-      state.reviewed = false;
-      markReviewedBtn.style.display = "inline-block";
-      editAgainBtn.style.display = "none";
-      reviewedBadgeEl.style.display = "none";
-      setClaimEditable(true);
-    }
-
     function setClaimEditable(editable) {
       claimFormEl.querySelectorAll("input, textarea, button").forEach((el) => (el.disabled = !editable));
     }
 
+    function applyReviewUiState() {
+      if (!state.claim) {
+        reviewActionsEl.style.display = "none";
+        return;
+      }
+      reviewActionsEl.style.display = "block";
+      markReviewedBtn.style.display = state.reviewed ? "none" : "inline-block";
+      editAgainBtn.style.display = state.reviewed ? "inline-block" : "none";
+      reviewedBadgeEl.style.display = state.reviewed ? "block" : "none";
+      setClaimEditable(!state.reviewed);
+    }
+
     markReviewedBtn.addEventListener("click", () => {
       state.reviewed = true;
-      setClaimEditable(false);
-      markReviewedBtn.style.display = "none";
-      editAgainBtn.style.display = "inline-block";
-      reviewedBadgeEl.style.display = "block";
+      applyReviewUiState();
       renderTabBar();
     });
 
     editAgainBtn.addEventListener("click", () => {
       state.reviewed = false;
-      setClaimEditable(true);
-      markReviewedBtn.style.display = "inline-block";
-      editAgainBtn.style.display = "none";
-      reviewedBadgeEl.style.display = "none";
+      applyReviewUiState();
       renderTabBar();
     });
 
@@ -455,7 +479,10 @@
       if (!multiline) input.type = "text";
       else input.rows = 3;
       input.value = value || "";
-      input.addEventListener("input", (e) => onChange(e.target.value));
+      input.addEventListener("input", (e) => {
+        onChange(e.target.value);
+        renderTabBar();
+      });
       label.appendChild(input);
       return label;
     }
@@ -545,9 +572,12 @@
 
     // ---- init ----
 
+    loadSavedState();
+    transcriptEl.value = state.transcript;
     renderFactsForm();
     renderCodesTable();
     renderClaimForm();
+    applyReviewUiState();
     showTab("transcript");
   </script>
 </body>
