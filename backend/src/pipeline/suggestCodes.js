@@ -13,13 +13,19 @@ const CODE_SUGGESTION_TOOL = {
             code: { type: "string", description: "The code itself, e.g. 'J02.0' or '87880'." },
             codeType: { type: "string", enum: ["ICD-10", "CPT"] },
             description: { type: "string", description: "The official or plain-language meaning of the code." },
+            confidence: {
+              type: "string",
+              enum: ["high", "medium"],
+              description:
+                "'high' when the facts directly and unambiguously support this code, 'medium' when it's a reasonable inference but something relevant wasn't explicitly stated (e.g. visit complexity, a measured value).",
+            },
             rationale: {
               type: "string",
               description:
                 "One or two sentences tying this specific code to specific facts from the extraction. If the facts are too thin to be confident, say so here instead of guessing.",
             },
           },
-          required: ["code", "codeType", "description", "rationale"],
+          required: ["code", "codeType", "description", "confidence", "rationale"],
         },
       },
     },
