@@ -1,0 +1,1154 @@
+<title>Ruby Health Pilot v1</title>
+<!--
+  Source for the published build-plan artifact. This file is an Artifact page
+  fragment: the <!doctype>/<html>/<head>/<body> skeleton is added at publish time,
+  so it deliberately has no wrapper tags. Edit here, then republish.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  /* ---- Light palette: the complete token set lives on bare :root ---- */
+  :root {
+    --ground:        #FBFAF7;   /* Ivory — brand page background */
+    --surface:       #FFFFFF;
+    --surface-sunk:  #F4F1EC;
+    --ink:           #251C1B;   /* Espresso — brand body text */
+    --ink-soft:      #6B5F5C;   /* espresso blended toward ivory */
+    --ink-faint:     #9A8F8B;
+    --rule:          #E4DDD5;
+    --rule-strong:   #CFC5BA;
+
+    --ruby:          #DB2A33;   /* Iridescent ruby — primary */
+    --cherry:        #CF424A;   /* secondary / hover */
+    --plum:          #5C1A32;   /* headings, depth */
+    --garnet:        #6B0F1E;   /* darkest red */
+    --blush:         #FFB8C8;   /* light accent */
+    --gold:          #B8965A;   /* champagne — rules, data emphasis */
+
+    --tint-plum:     #F5EDF0;
+    --tint-ruby:     #FBEDEC;
+    --tint-gold:     #F7F1E4;
+    --tint-ink:      #F1EEEA;
+
+    --heading:       var(--plum);
+    --link:          var(--ruby);
+    --shadow:        0 1px 2px rgba(37, 28, 27, .05), 0 8px 24px -14px rgba(37, 28, 27, .18);
+  }
+
+  /* ---- Dark: redefine ONLY tokens; explicit-light choice must win ---- */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:       #16100F;
+      --surface:      #1E1716;
+      --surface-sunk: #251C1B;
+      --ink:          #EDE5E1;
+      --ink-soft:     #B0A29D;
+      --ink-faint:    #82736E;
+      --rule:         #352A28;
+      --rule-strong:  #4A3B38;
+
+      --ruby:         #F0545C;
+      --cherry:       #E8737A;
+      --plum:         #FFB8C8;
+      --garnet:       #FF9FB2;
+      --blush:        #FFB8C8;
+      --gold:         #D4B478;
+
+      --tint-plum:    #2A1A20;
+      --tint-ruby:    #2E1919;
+      --tint-gold:    #2A2318;
+      --tint-ink:     #241D1B;
+
+      --heading:      var(--blush);
+      --link:         var(--ruby);
+      --shadow:       0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:       #16100F;
+    --surface:      #1E1716;
+    --surface-sunk: #251C1B;
+    --ink:          #EDE5E1;
+    --ink-soft:     #B0A29D;
+    --ink-faint:    #82736E;
+    --rule:         #352A28;
+    --rule-strong:  #4A3B38;
+
+    --ruby:         #F0545C;
+    --cherry:       #E8737A;
+    --plum:         #FFB8C8;
+    --garnet:       #FF9FB2;
+    --blush:        #FFB8C8;
+    --gold:         #D4B478;
+
+    --tint-plum:    #2A1A20;
+    --tint-ruby:    #2E1919;
+    --tint-gold:    #2A2318;
+    --tint-ink:     #241D1B;
+
+    --heading:      var(--blush);
+    --link:         var(--ruby);
+    --shadow:       0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.7);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    display: grid;
+    grid-template-columns: 210px minmax(0, 1fr);
+    gap: 56px;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 56px 28px 120px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .wrap { grid-template-columns: minmax(0,1fr); gap: 0; padding-top: 36px; }
+    .rail { position: static; margin-bottom: 40px; }
+  }
+
+  /* ---------- rail ---------- */
+  .rail { position: sticky; top: 40px; }
+  .rail-mark {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 22px;
+  }
+  .rail-mark .glyph {
+    width: 30px; height: 30px; border-radius: 8px; flex: none;
+    background: linear-gradient(135deg, #DB2A33 0%, #FFB8C8 35%, #DB2A33 60%, #6B0F1E 100%);
+    color: #fff; font-family: "IBM Plex Mono", monospace; font-weight: 600;
+    font-size: 12px; display: grid; place-items: center; letter-spacing: .02em;
+  }
+  .rail-mark .who {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .rail nav { display: flex; flex-direction: column; gap: 1px; border-left: 1px solid var(--rule); }
+  .rail a {
+    display: flex; gap: 10px; align-items: baseline;
+    padding: 5px 0 5px 12px; margin-left: -1px;
+    border-left: 2px solid transparent;
+    color: var(--ink-soft); text-decoration: none;
+    font-size: 13.5px; line-height: 1.35;
+  }
+  .rail a .n {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px;
+    color: var(--ink-faint); font-variant-numeric: tabular-nums;
+  }
+  .rail a:hover { color: var(--ruby); border-left-color: var(--ruby); }
+  .rail a:focus-visible { outline: 2px solid var(--ruby); outline-offset: 2px; border-radius: 2px; }
+
+  /* ---------- masthead ---------- */
+  .masthead { margin-bottom: 52px; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--gold); margin-bottom: 16px;
+  }
+  h1 {
+    font-family: Newsreader, Georgia, serif;
+    font-weight: 500; font-size: clamp(2.3rem, 5vw, 3.15rem);
+    line-height: 1.06; letter-spacing: -.018em;
+    color: var(--heading); text-wrap: balance; margin: 0 0 20px;
+  }
+  .standfirst {
+    font-family: Newsreader, Georgia, serif;
+    font-size: 1.24rem; line-height: 1.55; color: var(--ink-soft);
+    max-width: 60ch; margin: 0 0 26px;
+  }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 10px 24px;
+    padding-top: 20px; border-top: 1px solid var(--rule);
+    font-family: "IBM Plex Mono", monospace; font-size: 11.5px;
+    color: var(--ink-faint); letter-spacing: .02em;
+  }
+  .meta b { color: var(--ink-soft); font-weight: 500; }
+
+  /* ---------- sections ---------- */
+  section { margin-bottom: 62px; scroll-margin-top: 28px; }
+  h2 {
+    font-family: Newsreader, Georgia, serif;
+    font-weight: 500; font-size: 1.85rem; line-height: 1.18;
+    letter-spacing: -.012em; color: var(--heading);
+    margin: 0 0 6px; text-wrap: balance;
+    display: flex; align-items: baseline; gap: 14px;
+  }
+  h2 .num {
+    font-family: "IBM Plex Mono", monospace; font-size: .72rem;
+    color: var(--gold); letter-spacing: .08em; flex: none;
+    position: relative; top: -2px;
+  }
+  .dek {
+    color: var(--ink-soft); max-width: 66ch; font-size: .96rem;
+    margin: 0 0 26px; padding-bottom: 20px; border-bottom: 1px solid var(--rule);
+  }
+  h3 {
+    font-family: "IBM Plex Sans", sans-serif; font-weight: 600;
+    font-size: 1.02rem; letter-spacing: -.005em;
+    color: var(--ink); margin: 34px 0 8px;
+  }
+  p { max-width: 68ch; margin: 0 0 15px; }
+  a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  strong { font-weight: 600; color: var(--ink); }
+  code, .mono {
+    font-family: "IBM Plex Mono", monospace; font-size: .875em;
+    background: var(--tint-ink); padding: .1em .38em; border-radius: 4px;
+    color: var(--ink); border: 1px solid var(--rule);
+  }
+  ul, ol { max-width: 68ch; padding-left: 1.15em; margin: 0 0 15px; }
+  li { margin-bottom: 7px; }
+  li::marker { color: var(--gold); }
+
+  /* ---------- callout ---------- */
+  .note {
+    background: var(--tint-gold);
+    border: 1px solid var(--rule);
+    border-left: 2px solid var(--gold);
+    border-radius: 0 8px 8px 0;
+    padding: 16px 20px; margin: 24px 0; max-width: 68ch;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note .lbl {
+    font-family: "IBM Plex Mono", monospace; font-size: 10.5px;
+    letter-spacing: .12em; text-transform: uppercase;
+    color: var(--gold); display: block; margin-bottom: 7px;
+  }
+
+  /* ---------- findings ---------- */
+  .findings { display: flex; flex-direction: column; gap: 0; margin: 26px 0; }
+  .finding {
+    display: grid; grid-template-columns: 96px minmax(0,1fr);
+    gap: 20px; padding: 18px 0; border-top: 1px solid var(--rule);
+  }
+  .finding:last-child { border-bottom: 1px solid var(--rule); }
+  @media (max-width: 640px) { .finding { grid-template-columns: minmax(0,1fr); gap: 8px; } }
+  .chip {
+    font-family: "IBM Plex Mono", monospace; font-size: 10px;
+    letter-spacing: .08em; text-transform: uppercase;
+    padding: 3px 7px; border-radius: 4px; height: fit-content;
+    justify-self: start; white-space: nowrap;
+    border: 1px solid var(--rule-strong);
+  }
+  .chip.bug   { background: var(--tint-ruby); color: var(--ruby); border-color: var(--ruby); }
+  .chip.gap   { background: var(--tint-plum); color: var(--plum); border-color: var(--plum); }
+  .chip.cost  { background: var(--tint-gold); color: var(--gold); border-color: var(--gold); }
+  .finding h4 {
+    margin: 0 0 5px; font-size: .97rem; font-weight: 600;
+    color: var(--ink); line-height: 1.4;
+  }
+  .finding p { margin: 0 0 8px; font-size: .93rem; color: var(--ink-soft); max-width: 62ch; }
+  .finding p:last-child { margin-bottom: 0; }
+  .fix {
+    font-size: .93rem; color: var(--ink); max-width: 62ch;
+    padding-left: 13px; border-left: 2px solid var(--gold);
+  }
+  .fix b {
+    font-family: "IBM Plex Mono", monospace; font-size: 10px;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--gold);
+    display: block; margin-bottom: 3px; font-weight: 500;
+  }
+
+  /* ---------- tables ---------- */
+  .scroller { overflow-x: auto; margin: 24px 0; -webkit-overflow-scrolling: touch; }
+  table { border-collapse: collapse; width: 100%; min-width: 540px; font-size: .9rem; }
+  th, td { text-align: left; padding: 10px 14px 10px 0; border-bottom: 1px solid var(--rule); }
+  th {
+    font-family: "IBM Plex Mono", monospace; font-size: 10.5px;
+    letter-spacing: .09em; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 500;
+    border-bottom-color: var(--rule-strong); white-space: nowrap;
+  }
+  td.num, th.num { text-align: right; font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; padding-right: 0; }
+  tr.total td { border-bottom: none; border-top: 1px solid var(--rule-strong); font-weight: 600; color: var(--ink); }
+  tr.hero td { background: var(--tint-gold); }
+  tr.hero td:first-child { border-radius: 5px 0 0 5px; padding-left: 10px; }
+  tr.hero td:last-child  { border-radius: 0 5px 5px 0; padding-right: 10px; }
+  .cut { color: var(--ruby); font-weight: 600; }
+  caption {
+    caption-side: bottom; text-align: left; padding-top: 12px;
+    font-size: .8rem; color: var(--ink-faint); max-width: 68ch; line-height: 1.5;
+  }
+
+  /* ---------- pipeline diagram ---------- */
+  .pipes { display: grid; gap: 18px; margin: 28px 0; }
+  .pipe {
+    border: 1px solid var(--rule); border-radius: 10px;
+    background: var(--surface); padding: 18px 20px; box-shadow: var(--shadow);
+  }
+  .pipe.after { border-color: var(--gold); }
+  .pipe-head {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px;
+    margin-bottom: 16px;
+  }
+  .pipe-head .tag {
+    font-family: "IBM Plex Mono", monospace; font-size: 10px;
+    letter-spacing: .11em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 4px;
+    background: var(--tint-ink); color: var(--ink-soft); border: 1px solid var(--rule);
+  }
+  .pipe.after .pipe-head .tag { background: var(--tint-gold); color: var(--gold); border-color: var(--gold); }
+  .pipe-head .cost {
+    margin-left: auto; font-family: "IBM Plex Mono", monospace;
+    font-size: .95rem; font-weight: 600; color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .pipe.after .pipe-head .cost { color: var(--ruby); }
+  .flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; }
+  .node {
+    flex: 1 1 130px; min-width: 118px;
+    border: 1px solid var(--rule); border-radius: 7px;
+    background: var(--surface-sunk); padding: 10px 12px;
+  }
+  .node.llm { border-color: var(--rule-strong); background: var(--tint-plum); }
+  .node.det { background: var(--surface-sunk); border-style: dashed; }
+  .node.gone { opacity: .48; }
+  .node .k {
+    font-family: "IBM Plex Mono", monospace; font-size: 9.5px;
+    letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-faint); display: block; margin-bottom: 4px;
+  }
+  .node .t { font-size: .87rem; font-weight: 600; line-height: 1.3; color: var(--ink); }
+  .node .s {
+    font-family: "IBM Plex Mono", monospace; font-size: 10.5px;
+    color: var(--ink-soft); margin-top: 5px; font-variant-numeric: tabular-nums;
+  }
+  .node .s.strike { text-decoration: line-through; color: var(--ink-faint); }
+  .arrow { align-self: center; color: var(--rule-strong); font-size: 15px; flex: none; }
+  .pipe-foot {
+    margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule);
+    font-size: .86rem; color: var(--ink-soft); max-width: 70ch;
+  }
+
+  /* ---------- phases ---------- */
+  .phase {
+    display: grid; grid-template-columns: 52px minmax(0,1fr);
+    gap: 22px; padding: 22px 0; border-top: 1px solid var(--rule);
+  }
+  .phase:last-of-type { border-bottom: 1px solid var(--rule); }
+  @media (max-width: 640px) { .phase { grid-template-columns: minmax(0,1fr); gap: 10px; } }
+  .phase .marker {
+    font-family: "IBM Plex Mono", monospace; font-size: .72rem;
+    letter-spacing: .06em; color: var(--gold);
+    padding-top: 3px; font-variant-numeric: tabular-nums;
+  }
+  .phase h4 {
+    margin: 0 0 4px; font-size: 1.05rem; font-weight: 600;
+    color: var(--heading); font-family: Newsreader, Georgia, serif;
+    font-size: 1.28rem; font-weight: 500; letter-spacing: -.008em;
+  }
+  .phase .when {
+    font-family: "IBM Plex Mono", monospace; font-size: 10.5px;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint);
+    margin-bottom: 10px;
+  }
+  .phase ul { margin-bottom: 12px; font-size: .93rem; }
+  .done {
+    font-size: .89rem; padding: 9px 13px; border-radius: 6px;
+    background: var(--tint-ink); border: 1px solid var(--rule);
+    color: var(--ink-soft); max-width: 64ch;
+  }
+  .done b {
+    font-family: "IBM Plex Mono", monospace; font-size: 10px;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint);
+    font-weight: 500;
+  }
+
+  footer {
+    margin-top: 20px; padding-top: 22px; border-top: 1px solid var(--rule);
+    font-size: .85rem; color: var(--ink-faint); max-width: 68ch;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+  html { scroll-behavior: smooth; }
+</style>
+
+<div class="wrap">
+
+  <aside class="rail">
+    <div class="rail-mark">
+      <div class="glyph">RH</div>
+      <div class="who">Ruby Health</div>
+    </div>
+    <nav>
+      <a href="#read"><span class="n">01</span> Where it stands</a>
+      <a href="#cost"><span class="n">02</span> The cost correction</a>
+      <a href="#pipeline"><span class="n">03</span> Pipeline rebuild</a>
+      <a href="#accuracy"><span class="n">04</span> Accuracy</a>
+      <a href="#workflow"><span class="n">05</span> Workflow</a>
+      <a href="#ui"><span class="n">06</span> Interface</a>
+      <a href="#build"><span class="n">07</span> Build order</a>
+      <a href="#open"><span class="n">08</span> Open decisions</a>
+    </nav>
+  </aside>
+
+  <main>
+
+    <header class="masthead">
+      <div class="eyebrow">MVP Replan · Pilot-ready v1</div>
+      <h1>From working demo to a tool a clinic can run every day</h1>
+      <p class="standfirst">
+        The demo proves the mechanism. What it doesn't yet have is the shape of a
+        product: nothing validates a code before you see it, nothing carries an
+        encounter past a browser tab, and two-thirds of what you pay per claim buys
+        a transcript the claim never uses.
+      </p>
+      <div class="meta">
+        <span><b>Scope</b> pilot-ready v1, evolve existing code</span>
+        <span><b>Base</b> claude/ruby-health-mvp-06h6qn</span>
+        <span><b>Drafted</b> 28 Aug 2026</span>
+      </div>
+    </header>
+
+    <!-- ============ 01 ============ -->
+    <section id="read">
+      <h2><span class="num">01</span> Where it stands</h2>
+      <p class="dek">
+        An honest read of the app on <code>claude/ruby-health-mvp-06h6qn</code> before
+        proposing changes to it.
+      </p>
+
+      <p>
+        The build is further along than a prototype usually gets. The API key never
+        reaches the browser, every model call is a forced tool call rather than
+        parsed prose, claim population is deliberately deterministic with no model in
+        the loop, and the review lock means nothing is ever presented as final.
+        Those are the right instincts and this plan keeps all of them.
+      </p>
+      <p>
+        Three structural things separate it from something a clinic could use on a
+        Tuesday morning:
+      </p>
+
+      <div class="findings">
+        <div class="finding">
+          <span class="chip gap">Trust</span>
+          <div>
+            <h4>Nothing checks the model's work</h4>
+            <p>
+              Every ICD-10 and CPT code on the screen is free-generated text. No code
+              is checked against a real code set, no quote is checked against the
+              transcript it claims to come from, and the confidence dot is the same
+              model grading its own answer. A reviewer has no way to tell a solid
+              code from an invented one except by knowing the answer already — which
+              defeats the product.
+            </p>
+          </div>
+        </div>
+        <div class="finding">
+          <span class="chip gap">Shape</span>
+          <div>
+            <h4>The unit of work is one encounter; a clinic's unit is a day</h4>
+            <p>
+              A practice seeing 6–10 patients runs this six to ten times, and each run
+              starts from an empty page with no memory of the last. There is no
+              worklist, no status, no "what still needs me." State lives in
+              <code>sessionStorage</code>, so closing the tab ends the day's work.
+            </p>
+          </div>
+        </div>
+        <div class="finding">
+          <span class="chip cost">Economics</span>
+          <div>
+            <h4>The most expensive call produces nothing the claim needs</h4>
+            <p>
+              Transcript cleanup regenerates the entire transcript as output tokens —
+              62% of per-claim cost — to produce a punctuated document that the claim
+              never consumes. Extraction reads it, but extraction did fine without it.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="note">
+        <span class="lbl">Worth keeping</span>
+        <p>
+          The brand palette work, the sidebar, the code-as-insight-card layout, and
+          the recording-state machine are all good and this plan builds on them rather
+          than replacing them. The rebuild below is about what the screens
+          <em>contain</em>, not how they look.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ 02 ============ -->
+    <section id="cost">
+      <h2><span class="num">02</span> The cost correction</h2>
+      <p class="dek">
+        The production cost model budgets $1–3 per claim for LLM work. The measured
+        pipeline is around $0.036. That gap is the most consequential number in this
+        plan, because it changes which model you can afford.
+      </p>
+
+      <p>
+        Here is where money actually goes today, for a ten-minute encounter
+        (~1,700 tokens of transcript) on <code>claude-sonnet-5</code>:
+      </p>
+
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr>
+              <th>Call</th>
+              <th class="num">Input</th>
+              <th class="num">Output</th>
+              <th class="num">Cost</th>
+              <th class="num">Share</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Clean up transcript</td><td class="num">2,110</td><td class="num">1,780</td><td class="num">$0.0220</td><td class="num">62%</td></tr>
+            <tr><td>Extract clinical facts</td><td class="num">2,130</td><td class="num">300</td><td class="num">$0.0073</td><td class="num">21%</td></tr>
+            <tr><td>Suggest codes</td><td class="num">850</td><td class="num">450</td><td class="num">$0.0062</td><td class="num">17%</td></tr>
+            <tr class="total"><td>Per encounter</td><td class="num">5,090</td><td class="num">2,530</td><td class="num">$0.0355</td><td class="num"></td></tr>
+          </tbody>
+          <caption>
+            Token counts estimated at ~4 characters/token from the actual system
+            prompts and tool schemas in <code>backend/src/pipeline/</code>. Verify with
+            <code>messages.count_tokens</code> before locking anything in.
+          </caption>
+        </table>
+      </div>
+
+      <h3>Output tokens are the bill, not input</h3>
+      <p>
+        71% of the cost is output. That inverts the usual instinct to trim prompts:
+        shaving the system prompt saves fractions of a cent, while the cleanup step
+        regenerating a 1,700-token transcript costs more than the rest of the pipeline
+        combined. Every efficiency move in this plan targets output.
+      </p>
+
+      <h3>Prompt caching is not saving you anything</h3>
+      <p>
+        The static prefixes measure roughly 390–500 tokens per call (system prompt plus
+        tool schema). Sonnet 5 will not cache a prefix under 1,024 tokens — it fails
+        silently, with no error and <code>cache_creation_input_tokens: 0</code>. The
+        production plan lists prompt caching as the biggest cost lever; at these sizes
+        it is currently a no-op.
+      </p>
+      <div class="note">
+        <span class="lbl">The reframe</span>
+        <p>
+          Caching isn't a cost lever for this workload — it's what lets you
+          <em>afford a much larger prompt</em>. A 2,500-token block of coding guidance
+          (E/M decision-making rules, specificity requirements, worked examples) costs
+          about $0.0005 per claim to read from cache. Buy accuracy with it. That is the
+          same change appearing in the accuracy section below, which is the point:
+          here the cheap fix and the accurate fix are one fix.
+        </p>
+      </div>
+
+      <h3>What that buys you</h3>
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr><th>Configuration</th><th class="num">Per claim</th><th class="num">500-claim pilot</th><th>Note</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Today — 3 calls, Sonnet 5</td><td class="num">$0.0355</td><td class="num">$17.75</td><td>baseline</td></tr>
+            <tr><td>Restructured — 1 call, Sonnet 5</td><td class="num">$0.0114</td><td class="num">$5.72</td><td><span class="cut">−68%</span></td></tr>
+            <tr class="hero"><td>Restructured — 1 call, Opus 5</td><td class="num">$0.029–0.07</td><td class="num">$15–35</td><td><span class="cut">at or below today's bill</span></td></tr>
+            <tr class="total"><td>Notion model's assumption</td><td class="num">$1–3</td><td class="num">$500–1,500</td><td>revise this</td></tr>
+          </tbody>
+          <caption>
+            The Opus 5 range accounts for adaptive thinking, which is on by default and
+            bills as output — budget 500–2,000 extra output tokens on a coding
+            decision. Even at the top of the range it is roughly 40× below what the
+            model currently assumes.
+          </caption>
+        </table>
+      </div>
+
+      <p>
+        <strong>So run coding on Opus 5.</strong> Restructuring the pipeline pays for
+        the most capable model outright: you get better coding judgment than today at
+        roughly today's cost. Coding accuracy is the entire product — a denied claim
+        costs a practice far more than every model call that produced it.
+      </p>
+
+      <div class="note">
+        <span class="lbl">Second-order effect</span>
+        <p>
+          At three cents a claim, a 50-encounter evaluation run costs about $1.50. That
+          makes a real accuracy eval suite — the thing missing from every version of
+          this plan so far — something you can run on every prompt change without
+          thinking about it.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ 03 ============ -->
+    <section id="pipeline">
+      <h2><span class="num">03</span> Pipeline rebuild</h2>
+      <p class="dek">
+        Three model calls become one, and the deterministic work moves out of the model
+        entirely.
+      </p>
+
+      <div class="pipes">
+        <div class="pipe">
+          <div class="pipe-head">
+            <span class="tag">Today</span>
+            <span class="cost">$0.0355</span>
+          </div>
+          <div class="flow">
+            <div class="node llm"><span class="k">Claude</span><span class="t">Clean up transcript</span><span class="s">→ 1,780 out</span></div>
+            <span class="arrow">→</span>
+            <div class="node llm"><span class="k">Claude</span><span class="t">Extract facts</span><span class="s">→ 300 out</span></div>
+            <span class="arrow">→</span>
+            <div class="node llm"><span class="k">Claude</span><span class="t">Suggest codes</span><span class="s">→ 450 out</span></div>
+            <span class="arrow">→</span>
+            <div class="node det"><span class="k">Local</span><span class="t">Populate claim</span><span class="s">free</span></div>
+          </div>
+          <p class="pipe-foot">
+            Facts are generated as output, then sent straight back as input. Cleanup
+            regenerates the whole transcript. Each call re-pays its own system prompt
+            and tool schema.
+          </p>
+        </div>
+
+        <div class="pipe after">
+          <div class="pipe-head">
+            <span class="tag">Pilot v1</span>
+            <span class="cost">$0.029 · Opus 5</span>
+          </div>
+          <div class="flow">
+            <div class="node gone"><span class="k">Removed</span><span class="t">Clean up transcript</span><span class="s strike">1,780 out</span></div>
+            <span class="arrow">→</span>
+            <div class="node llm"><span class="k">Claude · cached prefix</span><span class="t">Extract facts + suggest codes</span><span class="s">→ 750 out</span></div>
+            <span class="arrow">→</span>
+            <div class="node det"><span class="k">Local</span><span class="t">Validate &amp; score</span><span class="s">free</span></div>
+            <span class="arrow">→</span>
+            <div class="node det"><span class="k">Local</span><span class="t">Populate &amp; scrub</span><span class="s">free</span></div>
+          </div>
+          <p class="pipe-foot">
+            One model call per encounter. Facts never round-trip. Validation, confidence
+            scoring, and the scrub are deterministic code — no tokens, no latency, and
+            they behave the same way every time.
+          </p>
+        </div>
+      </div>
+
+      <h3>Merge extraction and coding into one call</h3>
+      <p>
+        One request, one tool schema carrying both <code>facts</code> and
+        <code>suggestions</code>. This removes the facts round-trip, one system prompt,
+        and one tool schema, and it lets the model reason from transcript to code in a
+        single pass rather than from a lossy summary of the transcript.
+      </p>
+      <p>
+        <strong>The UI does not have to change to match.</strong> Facts and codes stay
+        separate on screen and stay independently editable — one call can populate two
+        panels. What you give up is per-step model routing (extraction on something
+        cheap, coding on something strong); that trade is worth it, because extraction
+        is the easy half and merging saves more than routing would.
+      </p>
+
+      <h3>Take cleanup off the claim path</h3>
+      <p>
+        Cleanup exists because dictation arrives unpunctuated and those run-on
+        fragments end up quoted in the claim's medical-necessity field. That is a real
+        problem with a cheaper fix: instruct the merged call to punctuate the quotes it
+        extracts. It is already selecting them — it can select them cleanly. The full
+        readable note is a separate concern, so keep the button for it as an on-demand
+        action for the chart, not a required step for the claim.
+      </p>
+
+      <h3>Never pay twice for the same input</h3>
+      <p>
+        Hash the input to each stage and cache the result. If a reviewer edits one
+        symptom chip and re-runs coding, only coding re-runs; if they change nothing
+        and click again, it costs nothing. For a system run repeatedly against
+        near-identical inputs, this is a larger real-world saving than any prompt
+        tuning, and it also removes the accidental-double-click cost.
+      </p>
+
+      <h3>Cache the guidance prefix, at one hour</h3>
+      <p>
+        Put the coding guidance block behind an explicit <code>cache_control</code>
+        breakpoint at the end of the shared prefix, never after the transcript —
+        the transcript differs every time, and a breakpoint after it writes a cache
+        entry nobody ever reads. Use the one-hour TTL: a clinic generates a claim every
+        thirty to sixty minutes, so a five-minute entry is always cold by the next one.
+      </p>
+      <div class="note">
+        <span class="lbl">Be honest about the break-even</span>
+        <p>
+          A one-hour cache write costs 2× base input. At three claims an hour it pays
+          for itself; at one claim an hour it does not. Instrument
+          <code>cache_read_input_tokens</code> and check real numbers before assuming
+          the win. If a clinic's rhythm is too sparse, the merged call alone still
+          delivers most of the saving — and an end-of-day batch run keeps the cache
+          hot for every claim while qualifying for the Batch API's 50% discount, which
+          suits how billing actually works.
+        </p>
+      </div>
+
+      <h3>Housekeeping that blocks the above</h3>
+      <ul>
+        <li>
+          <code>@anthropic-ai/sdk</code> is pinned at <code>^0.32.1</code>, well behind
+          current. Upgrade before relying on top-level <code>cache_control</code>,
+          <code>output_config.effort</code>, or adaptive thinking, and re-verify
+          against the changelog.
+        </li>
+        <li>
+          Keep the <code>ANTHROPIC_MODEL</code> environment override — it is what will
+          let you A/B a model against the eval suite without a deploy.
+        </li>
+        <li>
+          Log <code>usage</code> on every call. Cost per claim is a number you should be
+          able to look up, not re-derive.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ============ 04 ============ -->
+    <section id="accuracy">
+      <h2><span class="num">04</span> Accuracy</h2>
+      <p class="dek">
+        The demo asks a reviewer to trust codes that nothing has checked. Most of what
+        fixes that is deterministic code, not better prompting.
+      </p>
+
+      <div class="findings">
+
+        <div class="finding">
+          <span class="chip bug">Bug</span>
+          <div>
+            <h4>Every service line points at the first diagnosis</h4>
+            <p>
+              <code>populateClaim.js</code> sets
+              <code>diagnosisPointers: diagnoses[0].pointer</code> for every CPT line.
+              On a visit with a sore throat and a medication refill, the strep test
+              points at whichever diagnosis happened to sort first. Mislinked pointers
+              are a straightforward denial, and this would ship one on any multi-problem
+              encounter.
+            </p>
+            <div class="fix">
+              <b>Fix</b>
+              Add <code>supportingDiagnoses: string[]</code> to each CPT suggestion in
+              the tool schema — the model already knows which diagnosis justifies which
+              service, it is just never asked. Map those to pointer letters in
+              <code>populateClaim</code>. Cap diagnoses at twelve (A–L) per CMS-1500 and
+              surface an error past that rather than running off the end of the alphabet.
+            </div>
+          </div>
+        </div>
+
+        <div class="finding">
+          <span class="chip gap">Gap</span>
+          <div>
+            <h4>Codes are never checked against a code set</h4>
+            <p>
+              A plausible-looking code that was retired in 2024, or never existed, looks
+              identical on screen to a correct one.
+            </p>
+            <div class="fix">
+              <b>Fix</b>
+              ICD-10-CM is published free by CMS — load the annual release and make
+              validity a hash lookup. Any code not in the set is blocked from the claim,
+              not merely flagged. CPT is AMA-copyrighted and needs a paid license for
+              commercial use; see the open decisions below.
+            </div>
+          </div>
+        </div>
+
+        <div class="finding">
+          <span class="chip gap">Gap</span>
+          <div>
+            <h4>Quotes are not verified to be quotes</h4>
+            <p>
+              <code>medicalNecessityLanguage</code> is presented as direct quotation and
+              flows into the claim, but nothing confirms the text appears in the
+              transcript. A paraphrase that drifts is a medical-necessity attestation you
+              cannot support in an audit.
+            </p>
+            <div class="fix">
+              <b>Fix</b>
+              Normalized substring match against the transcript, with a token-overlap
+              fallback. Anything that fails gets relabeled "paraphrased" in the UI
+              instead of silently passing as a quote. Costs nothing and runs in
+              milliseconds.
+            </div>
+          </div>
+        </div>
+
+        <div class="finding">
+          <span class="chip gap">Gap</span>
+          <div>
+            <h4>Confidence is self-reported</h4>
+            <p>
+              The model that wrote the code also rates its own certainty. That number
+              cannot be used to decide what a human reviews, which is the only thing
+              confidence is for.
+            </p>
+            <div class="fix">
+              <b>Fix</b>
+              Compute it from signals you can check: the code exists in the code set;
+              the supporting quote verified; the ICD code is specific rather than an
+              "unspecified" variant; the model flagged ambiguity in its rationale.
+              Keep the model's self-assessment as one input among several, not the
+              output.
+            </div>
+          </div>
+        </div>
+
+        <div class="finding">
+          <span class="chip gap">Gap</span>
+          <div>
+            <h4>Nothing encodes how E/M levels are chosen</h4>
+            <p>
+              99213 versus 99214 is where a practice's revenue and its denial risk both
+              live, and the prompt says nothing about how that call is made. Right now
+              the level is a guess.
+            </p>
+            <div class="fix">
+              <b>Fix</b>
+              This is what the cached prefix is for. Encode the 2021 office-visit
+              guidelines — level by medical decision-making complexity (problems
+              addressed, data reviewed, risk) or by total time — plus worked examples.
+              Ask the model to state which criterion it applied and show that reasoning
+              on the code card, so a reviewer can check the logic rather than the verdict.
+            </div>
+          </div>
+        </div>
+
+        <div class="finding">
+          <span class="chip gap">Gap</span>
+          <div>
+            <h4>There is no scrub, which is the differentiator</h4>
+            <p>
+              The one-pager sells "automated claims scrubbing." The app has none — it
+              populates a template and calls it reviewed.
+            </p>
+            <div class="fix">
+              <b>Fix</b>
+              A deterministic pre-submission checklist: every service line links to at
+              least one diagnosis; every code validates; no unspecified ICD code where a
+              specific one is available; required CMS-1500 fields present; NPI
+              well-formed; date of service present and sane. Zero tokens, and it is the
+              screen that makes a biller believe the product.
+            </div>
+          </div>
+        </div>
+
+        <div class="finding">
+          <span class="chip gap">Gap</span>
+          <div>
+            <h4>No evaluation set, so no accuracy claim is testable</h4>
+            <p>
+              Every prompt change so far has been verified by looking at it. There is no
+              way to know whether a change to the coding prompt made things better or
+              quietly worse.
+            </p>
+            <div class="fix">
+              <b>Fix</b>
+              Build 30–50 synthetic encounters with known-correct codes, spanning the
+              common cases and a few deliberately ambiguous ones. Score code-set
+              validity, primary ICD match, E/M level match, and quote grounding. Run it
+              before and after every prompt change. At $1.50 a run there is no reason not
+              to. <strong>This is the single highest-value item in the plan</strong> —
+              without it, "more accurate" is an opinion.
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ 05 ============ -->
+    <section id="workflow">
+      <h2><span class="num">05</span> Workflow</h2>
+      <p class="dek">
+        The demo asks the user to drive four tabs and press four buttons for one
+        encounter. The pilot should ask for attention only where attention is worth
+        something.
+      </p>
+
+      <h3>Automation was the wrong thing to remove</h3>
+      <p>
+        The auto-cascade got cut because it yanked the user between tabs mid-thought.
+        That objection was right — but the fix removed automation along with the
+        navigation-stealing, and what's left is a workflow where every step needs a
+        deliberate click even though the steps always run in the same order.
+      </p>
+      <p>
+        <strong>Run automatically, never navigate.</strong> When recording stops, the
+        pipeline runs on its own. Progress shows in place — in the sidebar, on the
+        worklist row — and the user lands wherever they choose, whenever they choose.
+        Full control over where they are; no manual labor to get the work done. That
+        gets back what the cascade was for without reintroducing what made it
+        unpleasant.
+      </p>
+
+      <h3>The day is the unit, not the encounter</h3>
+      <p>
+        The screen that is missing is the one a biller would actually live in: today's
+        encounters as a list, each with a state and a reason it is in that state.
+      </p>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>State</th><th>Means</th><th>What the user does</th></tr></thead>
+          <tbody>
+            <tr><td><span class="mono">Recording</span></td><td>Capture in progress</td><td>Nothing</td></tr>
+            <tr><td><span class="mono">Drafting</span></td><td>Pipeline running</td><td>Nothing — go see the next patient</td></tr>
+            <tr><td><span class="mono">Needs review</span></td><td>Scrub found something, or a code scored low</td><td>Resolve the flagged items only</td></tr>
+            <tr><td><span class="mono">Ready</span></td><td>Clean scrub, reviewer signed off</td><td>Nothing until submission exists</td></tr>
+            <tr><td><span class="mono">Held</span></td><td>Missing information the encounter can't supply</td><td>Note why; comes back tomorrow</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Review by exception</h3>
+      <p>
+        A reviewer reading every field of every claim is the manual process the product
+        is meant to replace. The review screen should open with what needs attention —
+        "2 items need you: an unvalidated CPT code, a diagnosis with no supporting
+        quote" — and let everything that passed stay collapsed and skimmable. Confidence
+        scoring only earns its keep if it decides what surfaces.
+      </p>
+
+      <h3>Persistence</h3>
+      <p>
+        <code>sessionStorage</code> goes when the tab does. A pilot needs encounters
+        that survive a browser crash and a lunch break: Postgres or SQLite behind the
+        existing endpoints, one row per encounter, with the pipeline output stored as
+        structured JSON. Keep synthetic data only until the compliance phase — the
+        moment real PHI touches this, encryption at rest, audit logging, and a signed
+        BAA stop being optional, and that is a separate phase with its own gate.
+      </p>
+    </section>
+
+    <!-- ============ 06 ============ -->
+    <section id="ui">
+      <h2><span class="num">06</span> Interface</h2>
+      <p class="dek">
+        The visual language is right. What changes is what the screens have to say —
+        and tabs are the wrong container for a review that is mostly about exceptions.
+      </p>
+
+      <h3>Worklist becomes home</h3>
+      <p>
+        Sidebar navigation stays. The first screen becomes today's encounters, each row
+        a patient reference, time, state pill, and a count of unresolved flags. A
+        primary record action sits at the top. Opening a row goes to that encounter;
+        finishing one returns here. This one screen is what makes the tool feel like
+        software a practice runs rather than a demo someone shows.
+      </p>
+
+      <h3>Tabs become one review surface</h3>
+      <p>
+        Four tabs hide state — you cannot see from the Codes tab that the claim has an
+        unlinked service line. Replace them with a single scrolling review page,
+        sectioned as transcript / facts / codes / claim, with a sticky attention
+        summary at the top and anchors in the sidebar for jumping. Everything visible
+        at once, in the order the work happens, with the exceptions pulled to the top.
+      </p>
+
+      <h3>What each card has to carry now</h3>
+      <ul>
+        <li>
+          <strong>Code card</strong> — keep the existing layout, add a validation badge
+          (in code set / not found), the computed confidence rather than the model's,
+          the E/M criterion when it applies, and the supporting quote rendered as a
+          quote with a marker for whether it verified against the transcript.
+        </li>
+        <li>
+          <strong>Fact chips</strong> — keep. Add a quiet indicator on medical-necessity
+          quotes that failed grounding, so a paraphrase never passes for a quotation.
+        </li>
+        <li>
+          <strong>Claim</strong> — show the diagnosis-pointer mapping visibly, since it
+          is now real data rather than always "A", and it is the thing a biller checks
+          first.
+        </li>
+        <li>
+          <strong>Scrub panel</strong> — new, and the last thing before Ready. Each check
+          passes or explains itself in one line. This is the screen that sells the
+          product.
+        </li>
+      </ul>
+
+      <h3>Recording, kept</h3>
+      <p>
+        The push-to-talk and lock state machine, the timer, and the waveform are good
+        and stay as they are. The one change: when recording stops, the pipeline starts
+        on its own, and the encounter appears on the worklist as
+        <span class="mono">Drafting</span> — the clinician can walk away.
+      </p>
+    </section>
+
+    <!-- ============ 07 ============ -->
+    <section id="build">
+      <h2><span class="num">07</span> Build order</h2>
+      <p class="dek">
+        Ordered so that each phase is independently useful and nothing is built on a
+        data model that is still moving. Sizes are relative, not calendar estimates.
+      </p>
+
+      <div class="phase">
+        <div class="marker">P0</div>
+        <div>
+          <h4>Correctness on what already exists</h4>
+          <div class="when">Small · no new concepts</div>
+          <ul>
+            <li>Per-CPT diagnosis pointers; twelve-diagnosis cap with a real error past it.</li>
+            <li>Transcript grounding check on every necessity quote.</li>
+            <li>Upgrade <code>@anthropic-ai/sdk</code>; log <code>usage</code> on every call.</li>
+            <li>Measure real token counts with <code>count_tokens</code> and replace the estimates in section 02.</li>
+          </ul>
+          <p class="done"><b>Done when</b> &nbsp;a two-problem encounter produces correctly linked service lines, and you can state your per-claim cost from logs rather than arithmetic.</p>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="marker">P1</div>
+        <div>
+          <h4>Evaluation set</h4>
+          <div class="when">Small · unblocks judging everything after it</div>
+          <ul>
+            <li>30–50 synthetic encounters with known-correct codes, including ambiguous ones.</li>
+            <li>Scorer: code-set validity, primary ICD match, E/M level match, quote grounding.</li>
+            <li>One command, a printed scorecard, results committed so runs are comparable.</li>
+          </ul>
+          <p class="done"><b>Done when</b> &nbsp;you have a baseline score for today's pipeline. Every later phase is measured against it.</p>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="marker">P2</div>
+        <div>
+          <h4>Pipeline rebuild</h4>
+          <div class="when">Medium · settles the data model</div>
+          <ul>
+            <li>Merge extraction and coding; punctuate quotes in-place; retire cleanup from the claim path.</li>
+            <li>Cached guidance prefix with the E/M rules and worked examples, at one-hour TTL.</li>
+            <li>Move to Opus 5 and tune <code>effort</code> against the eval suite.</li>
+            <li>Content-hash memoization per stage.</li>
+          </ul>
+          <p class="done"><b>Done when</b> &nbsp;eval score is at or above baseline, cost per claim is down, and <code>cache_read_input_tokens</code> is non-zero on the second claim in an hour. <strong>UI work can start here</strong> — the data model is now fixed.</p>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="marker">P3</div>
+        <div>
+          <h4>Validation, confidence, scrub</h4>
+          <div class="when">Medium · mostly deterministic code</div>
+          <ul>
+            <li>ICD-10-CM code set loaded; invalid codes blocked from claims.</li>
+            <li>Computed confidence replacing the self-reported field.</li>
+            <li>Scrub checklist as a real gate before Ready.</li>
+          </ul>
+          <p class="done"><b>Done when</b> &nbsp;no invented code can reach a claim, and every scrub failure names what to fix.</p>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="marker">P4</div>
+        <div>
+          <h4>Workflow and persistence</h4>
+          <div class="when">Medium</div>
+          <ul>
+            <li>Storage behind the existing endpoints; one record per encounter.</li>
+            <li>Encounter states; pipeline runs automatically on recording stop, without navigating.</li>
+            <li>Worklist as the home screen.</li>
+          </ul>
+          <p class="done"><b>Done when</b> &nbsp;you can record three encounters back to back, close the browser, reopen it, and find all three with correct states.</p>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="marker">P5</div>
+        <div>
+          <h4>Review-by-exception interface</h4>
+          <div class="when">Medium · the "feel" phase</div>
+          <ul>
+            <li>Tabs collapse into one review surface with a sticky attention summary.</li>
+            <li>Code cards carry validation, computed confidence, E/M criterion, grounded quotes.</li>
+            <li>Scrub panel; visible diagnosis-pointer mapping.</li>
+          </ul>
+          <p class="done"><b>Done when</b> &nbsp;a clean encounter can be reviewed and marked Ready without reading the full transcript, and a flawed one shows you exactly what is wrong first.</p>
+        </div>
+      </div>
+
+      <div class="phase">
+        <div class="marker">P6</div>
+        <div>
+          <h4>Pilot readiness</h4>
+          <div class="when">Small · gate, not a build</div>
+          <ul>
+            <li>Full eval run and a written accuracy statement — what it gets right, where it does not.</li>
+            <li>Cost-per-claim dashboard from logged usage.</li>
+            <li>Written scope of what the pilot does and does not do, for the design partner.</li>
+          </ul>
+          <p class="done"><b>Done when</b> &nbsp;a physician can use it on synthetic encounters unaided, and you can answer "how accurate is it" with a number. Real PHI stays behind the compliance phase, which starts here and is a separate plan.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 08 ============ -->
+    <section id="open">
+      <h2><span class="num">08</span> Open decisions</h2>
+      <p class="dek">
+        Things this plan assumes, and the ones that need your call before the phase
+        that depends on them.
+      </p>
+
+      <h3>CPT licensing — blocks P3</h3>
+      <p>
+        CPT is AMA copyright, and validating or distributing the code set commercially
+        needs a paid license. ICD-10-CM and HCPCS Level II are free from CMS. For a
+        pilot you can validate ICD-10 fully and hand-maintain the small set of
+        office-visit E/M codes, but shipping CPT validation to a customer needs the
+        license sorted. Confirm the terms with counsel and budget for it — it belongs
+        in the cost model alongside Stedi.
+      </p>
+
+      <h3>Whether the pilot submits anything</h3>
+      <p>
+        This plan stops at a scrubbed, review-complete claim. Stedi integration and real
+        submission are a separate phase, and they arrive together with the compliance
+        work because a submitted claim carries real PHI by definition. Worth deciding
+        early: does the design partner want a tool that drafts claims their biller then
+        keys in, or one that submits? The first is a much shorter path to being useful.
+      </p>
+
+      <h3>Assumptions in the cost math</h3>
+      <ul>
+        <li>~1,700-token transcript per encounter (roughly ten minutes of speech). A long specialist visit could be three times that, and cost scales close to linearly.</li>
+        <li>Token counts estimated from prompt and schema bytes, not measured — P0 replaces them.</li>
+        <li>Opus 5 output includes adaptive thinking, which is why that row is a range rather than a figure.</li>
+      </ul>
+
+      <h3>What this plan deliberately leaves out</h3>
+      <p>
+        Multi-tenancy, EHR integration, eligibility checking, denial-reason ingestion via
+        835 remittance, and everything in the HIPAA infrastructure phase. Each is real
+        and none belongs before a design partner has confirmed the core loop is worth
+        their time.
+      </p>
+    </section>
+
+    <footer>
+      Supersedes the pipeline and cost sections of “Ruby Health — MVP Demo App: Build
+      Plan.” The production stack decisions (AWS, AssemblyAI, Stedi) stand; the LLM
+      cost model in that document should be revised down per section 02.
+    </footer>
+
+  </main>
+</div>
