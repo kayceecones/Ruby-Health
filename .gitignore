@@ -10,3 +10,4 @@ eval/results/mock-*.json
 reference/codes/*
 !reference/codes/.gitkeep
 !reference/codes/EXAMPLE*
+reference/section111-excluded.csv
