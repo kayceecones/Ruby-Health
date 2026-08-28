@@ -1,0 +1,38 @@
+{
+  "id": "013-three-problems-one-visit",
+  "tests": "Three distinct problems, each with its own management. Stresses diagnosis pointer assignment across multiple service lines.",
+  "transcript": "Three things today. First, the knee. Right knee has been aching for a month, worse on stairs. Exam shows crepitus and mild joint line tenderness medially, no effusion, ligaments stable. That's osteoarthritis, we'll start with physical therapy and topical diclofenac. Second, your cholesterol. LDL is one seventy two, up from one fifty. I'd like to start atorvastatin twenty milligrams. Third, you mentioned trouble sleeping. Tell me more. I lie awake for an hour or two most nights, has been three months now. That's chronic insomnia. Let's try sleep hygiene measures first and I'm going to refer you for cognitive behavioral therapy for insomnia. We'll also draw a lipid panel today to confirm before starting the statin.",
+  "expected": {
+    "diagnoses": [
+      "M17.11",
+      "E78.00",
+      "G47.00"
+    ],
+    "diagnosisAlternates": {
+      "M17.11": [
+        "M17.10",
+        "M17.9"
+      ],
+      "E78.00": [
+        "E78.5"
+      ]
+    },
+    "procedures": [
+      "80061"
+    ],
+    "emLevel": "99214",
+    "links": {
+      "80061": [
+        "E78.00"
+      ]
+    },
+    "mustNotCode": [
+      "M17.12"
+    ],
+    "groundingPhrases": [
+      "aching for a month",
+      "LDL is one seventy two",
+      "hour or two most nights"
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "005-diabetes-followup-stable",
+  "tests": "Chronic disease management. Tests that a stable chronic visit is not over-levelled.",
+  "transcript": "How have things been since we last met? Pretty steady. I've been taking the metformin twice a day, no stomach trouble anymore. Checking your sugars? Most mornings, they run between one ten and one thirty. Any numbness or tingling in your feet? No. Vision changes? No. Your A1c came back at six point nine, that's down from seven point four. Feet look good, pulses are strong, sensation is intact with the monofilament. Type two diabetes, well controlled. Keep the metformin at the current dose, and I'll see you in six months.",
+  "expected": {
+    "diagnoses": [
+      "E11.9"
+    ],
+    "diagnosisAlternates": {},
+    "procedures": [],
+    "emLevel": "99213",
+    "links": {},
+    "mustNotCode": [
+      "E11.65",
+      "E11.40",
+      "E10.9"
+    ],
+    "groundingPhrases": [
+      "A1c came back at six point nine",
+      "sensation is intact"
+    ]
+  }
+}

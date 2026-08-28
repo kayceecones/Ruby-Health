@@ -1,0 +1,29 @@
+{
+  "id": "014-otitis-media-pediatric-laterality",
+  "tests": "Laterality plus recurrence. Left ear is stated; a bilateral or unspecified code is a miss.",
+  "transcript": "She's been pulling at her left ear since yesterday and was up crying most of the night. Fever? One hundred point four this morning. Eating and drinking? Drinking okay, eating less. This is her third ear infection since January. Let me look. Right tympanic membrane is normal. Left tympanic membrane is bulging, erythematous, with loss of landmarks. That's an acute otitis media on the left. Given three episodes in six months I'm going to treat with high dose amoxicillin for ten days, and if this recurs we should talk to ENT.",
+  "expected": {
+    "diagnoses": [
+      "H66.002"
+    ],
+    "diagnosisAlternates": {
+      "H66.002": [
+        "H66.005",
+        "H66.92"
+      ]
+    },
+    "procedures": [],
+    "emLevel": "99214",
+    "links": {},
+    "mustNotCode": [
+      "H66.003",
+      "H66.001",
+      "H66.90"
+    ],
+    "groundingPhrases": [
+      "pulling at her left ear",
+      "Left tympanic membrane is bulging",
+      "third ear infection"
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "010-hypertension-followup",
+  "tests": "Straightforward chronic follow-up with no medication change.",
+  "transcript": "Blood pressure check today. Home readings? They've been running around one twenty eight over eighty, pretty consistent. Taking the lisinopril daily? Every morning, yes. Any dizziness, any cough? No cough, no dizziness. Pressure here is one thirty over eighty two. Heart sounds normal, no swelling in the ankles. That's at goal. We'll continue lisinopril ten milligrams daily and recheck in three months. Keep doing what you're doing.",
+  "expected": {
+    "diagnoses": [
+      "I10"
+    ],
+    "diagnosisAlternates": {},
+    "procedures": [],
+    "emLevel": "99213",
+    "links": {},
+    "mustNotCode": [
+      "I11.9",
+      "I16.0"
+    ],
+    "groundingPhrases": [
+      "one twenty eight over eighty",
+      "continue lisinopril"
+    ]
+  }
+}

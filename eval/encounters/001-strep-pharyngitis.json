@@ -1,0 +1,33 @@
+{
+  "id": "001-strep-pharyngitis",
+  "tests": "Baseline single-problem visit with a clearly documented procedure.",
+  "transcript": "Good morning. So what brings you in today? My throat has been really sore for about three days now. It hurts to swallow. Any cough? No, no cough at all. Have you had a fever? I felt hot last night, I didn't take my temperature. Okay, we recorded one hundred and one point two here. Let me take a look. Your tonsils are swollen with some white patches, and the lymph nodes in your neck are tender. No cough and a fever with that appearance makes strep a real possibility, so I want to run a rapid strep test today rather than guess. That came back positive. I'm going to start you on amoxicillin for ten days.",
+  "expected": {
+    "diagnoses": [
+      "J02.0"
+    ],
+    "diagnosisAlternates": {
+      "J02.0": [
+        "J02.9"
+      ]
+    },
+    "procedures": [
+      "87880"
+    ],
+    "emLevel": "99213",
+    "links": {
+      "87880": [
+        "J02.0"
+      ]
+    },
+    "mustNotCode": [
+      "J45.909",
+      "J20.9"
+    ],
+    "groundingPhrases": [
+      "sore for about three days",
+      "no cough",
+      "rapid strep test"
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "id": "003-uti-uncomplicated",
+  "tests": "Urinalysis ordered with clear medical necessity language.",
+  "transcript": "I've had burning when I urinate since Saturday, and I'm going to the bathroom constantly. Any back pain or fever? No back pain, no fever. Any nausea? No. Have you had urinary tract infections before? Two, maybe three years ago. Your abdomen is soft, no flank tenderness, which is reassuring against a kidney infection. Given the burning and frequency without fever, I want a urinalysis to confirm before treating. Urinalysis shows nitrites and leukocyte esterase. That's a straightforward bladder infection. I'll send in nitrofurantoin for five days.",
+  "expected": {
+    "diagnoses": [
+      "N39.0"
+    ],
+    "diagnosisAlternates": {},
+    "procedures": [
+      "81003"
+    ],
+    "emLevel": "99213",
+    "links": {
+      "81003": [
+        "N39.0"
+      ]
+    },
+    "mustNotCode": [
+      "N10"
+    ],
+    "groundingPhrases": [
+      "burning when I urinate",
+      "no flank tenderness",
+      "urinalysis"
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "id": "020-procedure-without-stated-necessity",
+  "tests": "A service is performed but the transcript never says why. Medical necessity language should be thin or absent, and the system should not fabricate a justification.",
+  "transcript": "Okay, we'll get a urinalysis today. Alright. Any other questions for me? No, I think that's everything. Good, the front desk will get you scheduled.",
+  "expected": {
+    "diagnoses": [],
+    "diagnosisAlternates": {},
+    "procedures": [
+      "81003"
+    ],
+    "emLevel": null,
+    "links": {},
+    "mustNotCode": [
+      "N39.0",
+      "R31.9",
+      "Z00.00"
+    ],
+    "groundingPhrases": []
+  }
+}

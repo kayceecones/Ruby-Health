@@ -32,6 +32,18 @@ jobs:
         working-directory: backend
         run: npm test
 
+      # The eval scorer imports only pure modules from backend/src, so it needs
+      # no install step. These tests are what stop the scorecard from silently
+      # measuring the wrong thing.
+      - name: Eval scorer tests
+        run: node --test eval/test/*.test.js
+
+      # Mock mode exercises the runner, fixtures and reporting without calling
+      # the model. It scores 100% by construction -- this checks the harness
+      # runs, not that the pipeline is accurate.
+      - name: Eval harness smoke test
+        run: node eval/run.mjs --mock
+
       # The pipeline is only correct if the server can actually start. A syntax
       # error or bad import in a module no test imports would otherwise ship.
       - name: Server boots

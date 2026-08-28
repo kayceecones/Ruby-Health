@@ -1,0 +1,21 @@
+{
+  "id": "018-followup-no-new-problem",
+  "tests": "Nurse-level follow-up with no physician decision making. Tests restraint at the very bottom of the scale.",
+  "transcript": "You're here for the blood pressure recheck we asked for. Reading today is one twenty two over seventy eight. Any problems with the medication? None. Good, that's where we want it. Nothing to change, keep on as you are, and we'll see you at your regular visit in the fall.",
+  "expected": {
+    "diagnoses": [
+      "I10"
+    ],
+    "diagnosisAlternates": {},
+    "procedures": [],
+    "emLevel": "99211",
+    "links": {},
+    "mustNotCode": [
+      "99214",
+      "99215"
+    ],
+    "groundingPhrases": [
+      "one twenty two over seventy eight"
+    ]
+  }
+}

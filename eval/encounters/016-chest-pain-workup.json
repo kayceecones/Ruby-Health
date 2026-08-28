@@ -1,0 +1,34 @@
+{
+  "id": "016-chest-pain-workup",
+  "tests": "Higher complexity with real risk. An EKG is performed and clearly documented.",
+  "transcript": "Tell me about the chest pain. It came on yesterday afternoon while I was mowing, pressure in the middle of my chest, lasted maybe ten minutes and went away when I sat down. Any arm or jaw pain? Some ache in my left arm. Shortness of breath? A little. Has this happened before? Once last week, also while working outside. You have high blood pressure and your father had a heart attack at fifty eight. Exertional chest pressure with radiation, relieved by rest, in someone with those risk factors is concerning for angina. I'm doing an EKG right now. The EKG shows normal sinus rhythm without acute ST changes. That's reassuring but does not rule this out. I'm referring you to cardiology urgently for a stress test, and if the pain comes back and doesn't stop with rest, call 911.",
+  "expected": {
+    "diagnoses": [
+      "R07.9",
+      "I10"
+    ],
+    "diagnosisAlternates": {
+      "R07.9": [
+        "I20.9",
+        "R07.89"
+      ]
+    },
+    "procedures": [
+      "93000"
+    ],
+    "emLevel": "99215",
+    "links": {
+      "93000": [
+        "R07.9"
+      ]
+    },
+    "mustNotCode": [
+      "I21.9"
+    ],
+    "groundingPhrases": [
+      "pressure in the middle of my chest",
+      "ache in my left arm",
+      "normal sinus rhythm"
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "id": "007-thin-documentation",
+  "tests": "Deliberately sparse. The system should code conservatively and say the record is thin, not invent specificity.",
+  "transcript": "How are you doing? Not great, I've just been tired. How long? A while I guess. Anything else going on? Not really. Sleeping alright? Some nights. Okay, let's get some blood work and go from there.",
+  "expected": {
+    "diagnoses": [
+      "R53.83"
+    ],
+    "diagnosisAlternates": {
+      "R53.83": [
+        "R53.81",
+        "R53.1"
+      ]
+    },
+    "procedures": [],
+    "emLevel": "99212",
+    "links": {},
+    "mustNotCode": [
+      "F32.9",
+      "E11.9",
+      "D64.9",
+      "E03.9"
+    ],
+    "groundingPhrases": [
+      "just been tired"
+    ]
+  }
+}

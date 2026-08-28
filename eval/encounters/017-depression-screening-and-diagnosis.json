@@ -1,0 +1,33 @@
+{
+  "id": "017-depression-screening-and-diagnosis",
+  "tests": "A screening instrument is administered and scored, which is separately reportable alongside the diagnosis.",
+  "transcript": "You mentioned on the intake that you've been feeling down. Yes, for a couple of months now. Nothing feels worth doing. Are you sleeping? Too much, honestly, and I still feel tired. Any thoughts of harming yourself? No, nothing like that. We had you complete the PHQ-9 in the waiting room and your score is sixteen, which is in the moderately severe range. Combined with what you're describing over two months, this is a major depressive episode, first one you've had. I'd like to start sertraline fifty milligrams and refer you to therapy. I want to see you back in two weeks to check how you're tolerating it.",
+  "expected": {
+    "diagnoses": [
+      "F32.1"
+    ],
+    "diagnosisAlternates": {
+      "F32.1": [
+        "F32.2",
+        "F32.9"
+      ]
+    },
+    "procedures": [
+      "96127"
+    ],
+    "emLevel": "99214",
+    "links": {
+      "96127": [
+        "F32.1"
+      ]
+    },
+    "mustNotCode": [
+      "F33.1"
+    ],
+    "groundingPhrases": [
+      "couple of months",
+      "score is sixteen",
+      "no, nothing like that"
+    ]
+  }
+}

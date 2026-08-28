@@ -1,0 +1,25 @@
+{
+  "id": "015-em-level-brief",
+  "tests": "Minimal problem, minimal work. Should land at the low end; over-levelling here is upcoding.",
+  "transcript": "I just need the wart on my thumb looked at. It's been there a few months, doesn't hurt. Small verrucous papule on the right thumb, about four millimeters. That's a common wart. Over the counter salicylic acid will usually clear it over several weeks. If it's still there in two months, come back and we can freeze it.",
+  "expected": {
+    "diagnoses": [
+      "B07.9"
+    ],
+    "diagnosisAlternates": {
+      "B07.9": [
+        "B07.8"
+      ]
+    },
+    "procedures": [],
+    "emLevel": "99212",
+    "links": {},
+    "mustNotCode": [
+      "17110"
+    ],
+    "groundingPhrases": [
+      "wart on my thumb",
+      "few months"
+    ]
+  }
+}
