@@ -1,0 +1,14 @@
+# Example only -- delete or replace with a real export.
+# Shape: one row per code, with how often the practice bills it.
+# No patient rows, no dates of service, no identifiers.
+code,description,count
+99213,"Office visit, established patient, low complexity",1180
+99214,"Office visit, established patient, moderate complexity",842
+J02.9,"Acute pharyngitis, unspecified",412
+Z23,Encounter for immunization,340
+E11.9,"Type 2 diabetes mellitus without complications",295
+I10,Essential (primary) hypertension,281
+87880,"Infectious agent detection, Streptococcus group A",244
+90471,"Immunization administration, one vaccine",198
+81003,"Urinalysis, automated, without microscopy",156
+N39.0,"Urinary tract infection, site not specified",151

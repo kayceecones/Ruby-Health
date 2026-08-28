@@ -5,3 +5,8 @@ node_modules/
 
 # Mock scorecards prove the harness, not accuracy -- not worth committing
 eval/results/mock-*.json
+
+# Practice billing data is yours -- not committed without a deliberate decision
+reference/codes/*
+!reference/codes/.gitkeep
+!reference/codes/EXAMPLE*

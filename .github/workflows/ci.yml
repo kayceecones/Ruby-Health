@@ -44,6 +44,9 @@ jobs:
       - name: Eval harness smoke test
         run: node eval/run.mjs --mock
 
+      - name: Reference code loader tests
+        run: node --test reference/test/*.test.js
+
       # The pipeline is only correct if the server can actually start. A syntax
       # error or bad import in a module no test imports would otherwise ship.
       - name: Server boots
