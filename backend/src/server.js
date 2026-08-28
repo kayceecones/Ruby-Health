@@ -7,13 +7,23 @@ import Anthropic from "@anthropic-ai/sdk";
 import { extractClinicalFacts } from "./pipeline/extract.js";
 import { cleanupTranscript } from "./pipeline/cleanupTranscript.js";
 import { suggestCodes } from "./pipeline/suggestCodes.js";
-import { populateClaim } from "./pipeline/populateClaim.js";
+import { populateClaim, ClaimError } from "./pipeline/populateClaim.js";
+import { verifyNecessityQuotes } from "./pipeline/verifyQuotes.js";
+import { usageTotals } from "./usage.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIR = path.join(__dirname, "..", "..", "frontend");
 
 const PORT = process.env.PORT || 3000;
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+// The claim path -- extraction and coding -- runs on the strongest model:
+// coding judgment is the product, and a denied claim costs a practice far more
+// than the model call that produced it.
+const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5";
+
+// Transcript cleanup is punctuation repair, not judgment, and it regenerates the
+// whole transcript as output tokens. It stays on a cheap model until it is
+// retired from the claim path entirely.
+const UTILITY_MODEL = process.env.ANTHROPIC_UTILITY_MODEL || "claude-haiku-4-5";
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 
 const anthropic = API_KEY ? new Anthropic({ apiKey: API_KEY }) : null;
@@ -24,7 +34,7 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.static(FRONTEND_DIR));
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, hasApiKey: Boolean(API_KEY) });
+  res.json({ ok: true, hasApiKey: Boolean(API_KEY), model: MODEL, utilityModel: UTILITY_MODEL });
 });
 
 app.post("/api/extract", async (req, res) => {
@@ -42,6 +52,11 @@ app.post("/api/extract", async (req, res) => {
 
   try {
     const facts = await extractClinicalFacts(anthropic, MODEL, transcript);
+
+    // Presented as direct quotation and carried into the claim as the
+    // justification for care, so it is checked before a reviewer sees it.
+    facts.medicalNecessityGrounding = verifyNecessityQuotes(facts, transcript);
+
     res.json({ facts });
   } catch (err) {
     console.error("Extraction failed:", err);
@@ -63,7 +78,7 @@ app.post("/api/cleanup-transcript", async (req, res) => {
   }
 
   try {
-    const { cleanedTranscript, summary } = await cleanupTranscript(anthropic, MODEL, transcript);
+    const { cleanedTranscript, summary } = await cleanupTranscript(anthropic, UTILITY_MODEL, transcript);
     res.json({ cleanedTranscript, summary });
   } catch (err) {
     console.error("Transcript cleanup failed:", err);
@@ -107,13 +122,21 @@ app.post("/api/populate-claim", (req, res) => {
     const claim = populateClaim(facts, codes);
     res.json({ claim });
   } catch (err) {
+    if (err instanceof ClaimError) {
+      return res.status(400).json({ error: err.message });
+    }
     console.error("Claim population failed:", err);
     res.status(500).json({ error: "Claim population failed. See server logs for details." });
   }
 });
 
+app.get("/api/usage", (_req, res) => {
+  res.json(usageTotals());
+});
+
 app.listen(PORT, () => {
   console.log(`Ruby Health demo backend listening on http://localhost:${PORT}`);
+  console.log(`Claim path model: ${MODEL} | transcript cleanup: ${UTILITY_MODEL}`);
   if (!API_KEY) {
     console.warn("Warning: ANTHROPIC_API_KEY is not set. /api/extract will return an error until it is configured.");
   }

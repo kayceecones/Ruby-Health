@@ -1,3 +1,5 @@
+import { recordUsage } from "../usage.js";
+
 const CODE_SUGGESTION_TOOL = {
   name: "record_code_suggestions",
   description:
@@ -24,8 +26,14 @@ const CODE_SUGGESTION_TOOL = {
               description:
                 "One or two sentences tying this specific code to specific facts from the extraction. If the facts are too thin to be confident, say so here instead of guessing.",
             },
+            supportingDiagnoses: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "For a CPT/procedure code: the ICD-10 codes from this same suggestion list that establish medical necessity for this specific service, most relevant first. A strep test is supported by the pharyngitis diagnosis, not by an unrelated one on the same visit. Use the exact code strings you suggested. For an ICD-10 entry, return an empty array.",
+            },
           },
-          required: ["code", "codeType", "description", "confidence", "rationale"],
+          required: ["code", "codeType", "description", "confidence", "rationale", "supportingDiagnoses"],
         },
       },
     },
@@ -33,7 +41,7 @@ const CODE_SUGGESTION_TOOL = {
   },
 };
 
-const SYSTEM_PROMPT = `You suggest candidate ICD-10 diagnosis codes and CPT procedure/service codes for a claim, based on structured clinical facts already extracted from a patient encounter. These are suggestions for a human reviewer to sanity-check before a claim is submitted -- not a certified coding determination, and not validated against a real coding rule set. Only suggest codes that are reasonably supported by the given facts. If a fact is too vague to support a confident code, either omit it or say so plainly in the rationale rather than guessing. Call the record_code_suggestions tool exactly once.`;
+const SYSTEM_PROMPT = `You suggest candidate ICD-10 diagnosis codes and CPT procedure/service codes for a claim, based on structured clinical facts already extracted from a patient encounter. These are suggestions for a human reviewer to sanity-check before a claim is submitted -- not a certified coding determination, and not validated against a real coding rule set. Only suggest codes that are reasonably supported by the given facts. If a fact is too vague to support a confident code, either omit it or say so plainly in the rationale rather than guessing. For every procedure code, link the specific diagnoses that establish its medical necessity -- an unlinked or mislinked service line is a denial, so be precise about which diagnosis justifies which service. Call the record_code_suggestions tool exactly once.`;
 
 export async function suggestCodes(anthropic, model, facts) {
   const response = await anthropic.messages.create({
@@ -50,9 +58,25 @@ export async function suggestCodes(anthropic, model, facts) {
     ],
   });
 
+  recordUsage("suggest-codes", model, response);
+
   const toolUse = response.content.find((block) => block.type === "tool_use");
   if (!toolUse) {
     throw new Error("Claude did not return structured code suggestion output.");
   }
-  return Array.isArray(toolUse.input?.suggestions) ? toolUse.input.suggestions : [];
+  const suggestions = Array.isArray(toolUse.input?.suggestions) ? toolUse.input.suggestions : [];
+
+  // JSON.stringify drops undefined keys, so a field the model omits would
+  // arrive at the browser as a missing key rather than an empty value. Default
+  // every field here so downstream code never reads undefined.
+  return suggestions.map((s) => ({
+    code: typeof s?.code === "string" ? s.code : "",
+    codeType: s?.codeType === "CPT" ? "CPT" : "ICD-10",
+    description: typeof s?.description === "string" ? s.description : "",
+    confidence: s?.confidence === "high" ? "high" : "medium",
+    rationale: typeof s?.rationale === "string" ? s.rationale : "",
+    supportingDiagnoses: Array.isArray(s?.supportingDiagnoses)
+      ? s.supportingDiagnoses.filter((d) => typeof d === "string" && d.trim().length > 0)
+      : [],
+  }));
 }

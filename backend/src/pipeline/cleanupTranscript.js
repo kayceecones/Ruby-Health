@@ -1,3 +1,5 @@
+import { recordUsage } from "../usage.js";
+
 const CLEANUP_TOOL = {
   name: "record_cleaned_transcript",
   description:
@@ -36,6 +38,8 @@ export async function cleanupTranscript(anthropic, model, transcript) {
       },
     ],
   });
+
+  recordUsage("cleanup-transcript", model, response);
 
   const toolUse = response.content.find((block) => block.type === "tool_use");
   if (!toolUse) {
