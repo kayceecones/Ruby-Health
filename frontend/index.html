@@ -193,6 +193,27 @@
       line-height: 1.55; resize: none; overflow: hidden; padding: 0; min-height: 1.6em; width: 100%;
     }
     .quote-card textarea:focus { outline: none; }
+    .quote-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+    .quote-flag {
+      align-self: flex-start; font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      padding: 2px 7px; border-radius: 5px; border: 1px solid transparent; white-space: nowrap;
+    }
+    .quote-flag.verified { color: var(--ink-2); border-color: var(--border-soft); background: transparent; }
+    .quote-flag.paraphrased { color: var(--gold); border-color: var(--gold); background: rgba(184, 150, 90, 0.09); }
+    .quote-flag.unsupported { color: var(--accent); border-color: var(--accent); background: rgba(219, 42, 51, 0.07); }
+    .quote-flag.unchecked { color: var(--ink-3); border-color: var(--border-soft); background: transparent; }
+
+    .claim-warnings { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+    .claim-warning {
+      display: flex; gap: 10px; align-items: flex-start; padding: 11px 14px; border-radius: 10px;
+      border: 1px solid var(--accent); background: rgba(219, 42, 51, 0.06); font-size: 13px; color: var(--ink);
+      line-height: 1.5;
+    }
+    .claim-warning .w-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; letter-spacing: 0.07em;
+      color: var(--accent); flex: none; padding-top: 2px;
+    }
     .quote-add-row { display: flex; gap: 10px; align-items: center; }
     .quote-add-row .chip-input { border-radius: 10px; }
 
@@ -823,6 +844,9 @@
           const v = input.value.trim();
           if (v) {
             arr.push(v);
+            if (Array.isArray(state.facts?.medicalNecessityGrounding)) {
+              state.facts.medicalNecessityGrounding.push(null);
+            }
             input.value = "";
             renderFacts();
             renderNav();
@@ -850,15 +874,45 @@
         const card = document.createElement("div");
         card.className = "quote-card";
         card.innerHTML = ICON_QUOTE;
+
+        const body = document.createElement("div");
+        body.className = "quote-card-body";
+
         const textarea = document.createElement("textarea");
         textarea.value = value;
         textarea.rows = 1;
         textarea.addEventListener("input", () => {
           arr[i] = textarea.value;
+          // The grounding result described the previous text; once the quote is
+          // edited it no longer applies, and a stale badge would be a lie.
+          if (Array.isArray(state.facts?.medicalNecessityGrounding)) {
+            state.facts.medicalNecessityGrounding[i] = null;
+          }
+          flag.className = "quote-flag unchecked";
+          flag.textContent = "Edited \u00b7 not re-checked";
           autoGrow(textarea);
           renderNav();
         });
-        card.appendChild(textarea);
+        body.appendChild(textarea);
+
+        const flag = document.createElement("span");
+        const grounding = state.facts?.medicalNecessityGrounding?.[i];
+        if (!grounding) {
+          flag.className = "quote-flag unchecked";
+          flag.textContent = "Not checked";
+        } else if (grounding.status === "verified") {
+          flag.className = "quote-flag verified";
+          flag.textContent = "\u2713 In transcript";
+        } else if (grounding.status === "paraphrased") {
+          flag.className = "quote-flag paraphrased";
+          flag.textContent = "Paraphrased \u00b7 not a quote";
+        } else {
+          flag.className = "quote-flag unsupported";
+          flag.textContent = "Not found in transcript";
+        }
+        body.appendChild(flag);
+
+        card.appendChild(body);
         requestAnimationFrame(() => autoGrow(textarea));
         const removeBtn = document.createElement("button");
         removeBtn.type = "button";
@@ -867,6 +921,9 @@
         removeBtn.innerHTML = ICON_X;
         removeBtn.addEventListener("click", () => {
           arr.splice(i, 1);
+          if (Array.isArray(state.facts?.medicalNecessityGrounding)) {
+            state.facts.medicalNecessityGrounding.splice(i, 1);
+          }
           renderFacts();
           renderNav();
         });
@@ -1269,6 +1326,25 @@
         return;
       }
       const c = state.claim;
+
+      // Anything that would draw a denial goes above the form, not buried in it.
+      if (Array.isArray(c.warnings) && c.warnings.length > 0) {
+        const warnBox = document.createElement("div");
+        warnBox.className = "claim-warnings";
+        c.warnings.forEach((w) => {
+          const row = document.createElement("div");
+          row.className = "claim-warning";
+          const codeEl = document.createElement("span");
+          codeEl.className = "w-code";
+          codeEl.textContent = w.code;
+          const msgEl = document.createElement("span");
+          msgEl.textContent = w.message;
+          row.appendChild(codeEl);
+          row.appendChild(msgEl);
+          warnBox.appendChild(row);
+        });
+        claimFormEl.appendChild(warnBox);
+      }
 
       const patientFieldset = document.createElement("fieldset");
       patientFieldset.className = "rh-fieldset";

@@ -1,3 +1,5 @@
+import { recordUsage } from "../usage.js";
+
 const EXTRACTION_TOOL = {
   name: "record_clinical_facts",
   description:
@@ -51,6 +53,8 @@ export async function extractClinicalFacts(anthropic, model, transcript) {
       },
     ],
   });
+
+  recordUsage("extract", model, response);
 
   const toolUse = response.content.find((block) => block.type === "tool_use");
   if (!toolUse) {
