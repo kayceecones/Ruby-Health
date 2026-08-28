@@ -1,0 +1,54 @@
+name: CI
+
+# Runs on every pull request into master, and on master itself. Once branch
+# protection requires this check, a red suite blocks the merge -- which is the
+# point: master should always be a commit that could be deployed.
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+jobs:
+  test:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      # `npm ci` installs exactly what the lockfile pins and fails if
+      # package.json and the lockfile disagree -- a drift check for free.
+      - name: Install
+        working-directory: backend
+        run: npm ci
+
+      - name: Test
+        working-directory: backend
+        run: npm test
+
+      # The pipeline is only correct if the server can actually start. A syntax
+      # error or bad import in a module no test imports would otherwise ship.
+      - name: Server boots
+        working-directory: backend
+        env:
+          PORT: "3999"
+        run: |
+          node src/server.js &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null' EXIT
+          for i in $(seq 1 20); do
+            if curl -sf "http://127.0.0.1:3999/api/health" > /dev/null; then
+              echo "Server responded on /api/health"
+              curl -s "http://127.0.0.1:3999/api/health"
+              exit 0
+            fi
+            sleep 0.5
+          done
+          echo "Server did not become healthy within 10s"
+          exit 1
