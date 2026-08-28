@@ -9,7 +9,9 @@ import { cleanupTranscript } from "./pipeline/cleanupTranscript.js";
 import { suggestCodes } from "./pipeline/suggestCodes.js";
 import { populateClaim, ClaimError } from "./pipeline/populateClaim.js";
 import { verifyNecessityQuotes } from "./pipeline/verifyQuotes.js";
+import { annotateValidation, unrecognisedCodes } from "./pipeline/validateCodes.js";
 import { usageTotals } from "./usage.js";
+import { loadCodeSet } from "../../reference/loadCodes.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIR = path.join(__dirname, "..", "..", "frontend");
@@ -28,13 +30,40 @@ const API_KEY = process.env.ANTHROPIC_API_KEY;
 
 const anthropic = API_KEY ? new Anthropic({ apiKey: API_KEY }) : null;
 
+// Loaded once at boot. Absent or empty is fine: validation reports "unchecked"
+// rather than failing, so a fresh clone with no reference files still runs.
+let codeIndex = null;
+loadCodeSet()
+  .then(({ codes, byKey, sources }) => {
+    if (codes.length === 0) {
+      console.warn("No reference code set found -- code validation is disabled. See reference/README.md.");
+      return;
+    }
+    const coversTypes = new Set(codes.map((c) => c.type));
+    codeIndex = { byKey, coversTypes, source: sources.map((s2) => s2.file).join(", "), size: codes.length };
+    console.log(`Reference code set: ${codes.length} codes covering ${[...coversTypes].join(", ")}`);
+    console.warn(
+      "NOTE: the loaded set is not a complete billing code set. Validation is " +
+        "warning-level only and never blocks a code. Demo use only."
+    );
+  })
+  .catch((err) => console.warn("Could not load reference code set:", err.message));
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(FRONTEND_DIR));
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, hasApiKey: Boolean(API_KEY), model: MODEL, utilityModel: UTILITY_MODEL });
+  res.json({
+    ok: true,
+    hasApiKey: Boolean(API_KEY),
+    model: MODEL,
+    utilityModel: UTILITY_MODEL,
+    codeValidation: codeIndex
+      ? { enabled: true, codes: codeIndex.size, covers: [...codeIndex.coversTypes], blocking: false }
+      : { enabled: false },
+  });
 });
 
 app.post("/api/extract", async (req, res) => {
@@ -100,7 +129,14 @@ app.post("/api/suggest-codes", async (req, res) => {
   }
 
   try {
-    const suggestions = await suggestCodes(anthropic, MODEL, facts);
+    const suggested = await suggestCodes(anthropic, MODEL, facts);
+    const suggestions = annotateValidation(suggested, codeIndex);
+
+    const unrecognised = unrecognisedCodes(suggestions);
+    if (unrecognised.length > 0) {
+      console.log(JSON.stringify({ type: "validation", unrecognised }));
+    }
+
     res.json({ suggestions });
   } catch (err) {
     console.error("Code suggestion failed:", err);

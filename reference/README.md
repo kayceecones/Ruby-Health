@@ -1,5 +1,29 @@
 # Reference code sets
 
+## ⚠️ The loaded code set is incomplete — demo only
+
+Currently loaded: **CMS Section 111 valid ICD-10, FY2027 (74,099 codes)**.
+
+Section 111 is the **Medicare Secondary Payer reporting** list — liability,
+no-fault and workers' compensation. It is *not* the general billing code set,
+and it omits codes that are perfectly valid to bill. `Z23` (encounter for
+immunization) is absent, and it will not be the only one.
+
+Because of that:
+
+- **Validation is warning-level and never blocks a code.** An unrecognised code
+  is flagged for a reviewer, not removed. Blocking on an incomplete list would
+  reject correct codes with total confidence, which is worse than not checking.
+- **No accuracy claim may rest on this set.** "Validated against the code set"
+  is not a true statement while this is what is loaded.
+- **CPT and HCPCS are not covered at all.** Procedure codes report as
+  *unchecked*, not as valid.
+
+**Before a pilot with real claims**, replace this with the complete ICD-10-CM
+release from CMS (free) and license CPT from the AMA. Only then does hard
+blocking become the right behaviour. Until then this is a demo aid.
+
+
 Drop code files into `reference/codes/`. Anything ending `.csv`, `.tsv`, `.txt`,
 or `.json` is picked up automatically. Then:
 
@@ -77,9 +101,11 @@ those, so include a `type` column if your file has many of them.
 
 Two very different jobs, deliberately kept apart:
 
-**Validation** — after the model suggests a code, look it up. Not in the set,
-not on the claim. Deterministic, zero tokens, catches every hallucinated or
-retired code. This is the P3 work.
+**Validation** — after the model suggests a code, look it up. Deterministic,
+zero tokens. *Today* an unrecognised code is flagged for review and nothing
+more, because the loaded set is incomplete (see the warning at the top).
+Hard blocking — not in the set, not on the claim — is the P3 behaviour, and it
+waits on a complete ICD-10-CM release.
 
 **Retrieval shortlist** — search the set for codes plausibly matching the
 encounter and put *those* 20–40 in the prompt, so the model picks from real
