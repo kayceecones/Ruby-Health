@@ -8,6 +8,7 @@ import { extractClinicalFacts } from "./pipeline/extract.js";
 import { cleanupTranscript } from "./pipeline/cleanupTranscript.js";
 import { suggestCodes } from "./pipeline/suggestCodes.js";
 import { populateClaim, ClaimError } from "./pipeline/populateClaim.js";
+import { submitClaim, SubmissionError } from "./pipeline/submitClaim.js";
 import { verifyNecessityQuotes } from "./pipeline/verifyQuotes.js";
 import { annotateValidation, unrecognisedCodes } from "./pipeline/validateCodes.js";
 import { usageTotals } from "./usage.js";
@@ -163,6 +164,21 @@ app.post("/api/populate-claim", (req, res) => {
     }
     console.error("Claim population failed:", err);
     res.status(500).json({ error: "Claim population failed. See server logs for details." });
+  }
+});
+
+app.post("/api/submit-claim", (req, res) => {
+  const { claim } = req.body || {};
+
+  try {
+    const result = submitClaim(claim);
+    res.json({ result });
+  } catch (err) {
+    if (err instanceof SubmissionError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Claim submission failed:", err);
+    res.status(500).json({ error: "Claim submission failed. See server logs for details." });
   }
 });
 
