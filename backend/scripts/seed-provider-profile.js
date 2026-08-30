@@ -11,7 +11,9 @@
 
 import { upsertProviderProfile, DEFAULT_PROVIDER_ID } from "../src/providerProfiles.js";
 
-const demoProfile = {
+// Exported so other scripts (e.g. smoke-stedi.js) can seed the same demo
+// profile on demand without duplicating it or re-running this file's CLI output.
+export const DEMO_PROVIDER_PROFILE = {
   name: "Ruby Health Demo Practice",
   npi: "1999999984", // Stedi's published test NPI
   ein: "123456789", // placeholder -- real EIN needed before a non-test payer
@@ -24,6 +26,10 @@ const demoProfile = {
   },
 };
 
-const saved = upsertProviderProfile(DEFAULT_PROVIDER_ID, demoProfile);
-console.log(`Seeded provider profile for '${DEFAULT_PROVIDER_ID}':`);
-console.log(JSON.stringify(saved, null, 2));
+// Guarded so importing DEMO_PROVIDER_PROFILE elsewhere doesn't also reseed
+// and print -- only running this file directly does.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const saved = upsertProviderProfile(DEFAULT_PROVIDER_ID, DEMO_PROVIDER_PROFILE);
+  console.log(`Seeded provider profile for '${DEFAULT_PROVIDER_ID}':`);
+  console.log(JSON.stringify(saved, null, 2));
+}
