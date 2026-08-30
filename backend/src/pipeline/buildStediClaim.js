@@ -144,6 +144,7 @@ export function buildStediClaim(claim, config = {}) {
       planParticipationCode: "A", // assigned
       benefitsAssignmentCertificationIndicator: "Y",
       releaseInformationCode: "Y",
+      signatureIndicator: "Y", // provider signature on file -- standard for an encounter that already happened
       healthCareCodeInformation,
       serviceLines,
     },

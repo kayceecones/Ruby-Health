@@ -64,6 +64,12 @@ test("every service line carries a serviceDate -- Stedi rejects lines missing on
   }
 });
 
+test("claimInformation carries a signatureIndicator -- Stedi requires one", () => {
+  const claim = populateClaim(facts, codes);
+  const stediClaim = buildStediClaim(claim);
+  assert.equal(stediClaim.claimInformation.signatureIndicator, "Y");
+});
+
 test("an unlinked service line falls back to the principal diagnosis so it still submits", () => {
   const claim = populateClaim(
     facts,
