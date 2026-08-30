@@ -78,6 +78,9 @@ export function buildStediClaim(claim, config = {}) {
         measurementUnit: "UN",
         serviceUnitCount: String(line.units ?? 1),
         compositeDiagnosisCodePointers: { diagnosisCodePointers },
+        // Required by Stedi -- every line needs its own service date, even
+        // though every line in this MVP happens on the same encounter date.
+        serviceDate: digitsOnly(claim.dateOfService) || digitsOnly(new Date().toISOString().slice(0, 10)),
         description: line.description,
       },
     };

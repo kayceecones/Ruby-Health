@@ -54,6 +54,15 @@ test("letter pointers resolve to 1-based integer pointers Stedi expects", () => 
   assert.deepEqual(shot.professionalService.compositeDiagnosisCodePointers.diagnosisCodePointers, ["2"]);
 });
 
+test("every service line carries a serviceDate -- Stedi rejects lines missing one", () => {
+  const claim = populateClaim(facts, codes);
+  const stediClaim = buildStediClaim(claim);
+  const expected = claim.dateOfService.replace(/-/g, "");
+  for (const line of stediClaim.claimInformation.serviceLines) {
+    assert.equal(line.professionalService.serviceDate, expected);
+  }
+});
+
 test("an unlinked service line falls back to the principal diagnosis so it still submits", () => {
   const claim = populateClaim(
     facts,
