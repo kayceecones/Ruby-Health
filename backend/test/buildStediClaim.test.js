@@ -59,7 +59,8 @@ test("every service line carries a serviceDate -- Stedi rejects lines missing on
   const stediClaim = buildStediClaim(claim);
   const expected = claim.dateOfService.replace(/-/g, "");
   for (const line of stediClaim.claimInformation.serviceLines) {
-    assert.equal(line.professionalService.serviceDate, expected);
+    assert.equal(line.serviceDate, expected);
+    assert.equal(line.professionalService.serviceDate, undefined); // Stedi rejects it here as an unknown field
   }
 });
 
