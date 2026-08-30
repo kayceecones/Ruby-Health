@@ -9,7 +9,16 @@ import { cleanupTranscript } from "./pipeline/cleanupTranscript.js";
 import { suggestCodes } from "./pipeline/suggestCodes.js";
 import { populateClaim, ClaimError } from "./pipeline/populateClaim.js";
 import { verifyNecessityQuotes } from "./pipeline/verifyQuotes.js";
+import { buildStediClaim, StediMappingError } from "./pipeline/buildStediClaim.js";
+import { submitToStedi, StediSubmissionError } from "./pipeline/submitToStedi.js";
 import { usageTotals } from "./usage.js";
+import {
+  getProviderProfile,
+  upsertProviderProfile,
+  listProviderProfiles,
+  ProviderProfileError,
+  DEFAULT_PROVIDER_ID,
+} from "./providerProfiles.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIR = path.join(__dirname, "..", "..", "frontend");
@@ -25,6 +34,10 @@ const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5";
 // retired from the claim path entirely.
 const UTILITY_MODEL = process.env.ANTHROPIC_UTILITY_MODEL || "claude-haiku-4-5";
 const API_KEY = process.env.ANTHROPIC_API_KEY;
+
+// Stedi sandbox credentials -- separate from the Anthropic key, kept out of
+// the repo the same way. A test-mode key only reaches Stedi's sandbox network.
+const STEDI_API_KEY = process.env.STEDI_API_KEY;
 
 const anthropic = API_KEY ? new Anthropic({ apiKey: API_KEY }) : null;
 
@@ -109,7 +122,7 @@ app.post("/api/suggest-codes", async (req, res) => {
 });
 
 app.post("/api/populate-claim", (req, res) => {
-  const { facts, codes } = req.body || {};
+  const { facts, codes, providerId } = req.body || {};
 
   if (!facts || typeof facts !== "object") {
     return res.status(400).json({ error: "Request body must include a 'facts' object (the extraction output)." });
@@ -119,7 +132,8 @@ app.post("/api/populate-claim", (req, res) => {
   }
 
   try {
-    const claim = populateClaim(facts, codes);
+    const providerProfile = getProviderProfile(providerId || DEFAULT_PROVIDER_ID);
+    const claim = populateClaim(facts, codes, providerProfile);
     res.json({ claim });
   } catch (err) {
     if (err instanceof ClaimError) {
@@ -132,6 +146,72 @@ app.post("/api/populate-claim", (req, res) => {
 
 app.get("/api/usage", (_req, res) => {
   res.json(usageTotals());
+});
+
+app.get("/api/provider-profile", (req, res) => {
+  const providerId = req.query.providerId || DEFAULT_PROVIDER_ID;
+  const profile = getProviderProfile(providerId);
+  res.json({ providerId, profile }); // profile is null if none is configured yet
+});
+
+app.get("/api/provider-profiles", (_req, res) => {
+  res.json({ providerIds: listProviderProfiles() });
+});
+
+app.post("/api/provider-profile", (req, res) => {
+  const { providerId, profile } = req.body || {};
+
+  if (!profile || typeof profile !== "object") {
+    return res.status(400).json({ error: "Request body must include a 'profile' object." });
+  }
+
+  try {
+    const saved = upsertProviderProfile(providerId || DEFAULT_PROVIDER_ID, profile);
+    res.json({ providerId: providerId || DEFAULT_PROVIDER_ID, profile: saved });
+  } catch (err) {
+    if (err instanceof ProviderProfileError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Saving provider profile failed:", err);
+    res.status(500).json({ error: "Failed to save provider profile." });
+  }
+});
+
+app.post("/api/submit-claim", async (req, res) => {
+  const { claim } = req.body || {};
+
+  if (!claim || typeof claim !== "object") {
+    return res.status(400).json({ error: "Request body must include a 'claim' object (the populated claim)." });
+  }
+
+  if (!STEDI_API_KEY) {
+    return res.status(500).json({
+      error: "STEDI_API_KEY is not configured on the server. Add it to backend/.env and restart.",
+    });
+  }
+
+  let stediClaim;
+  try {
+    stediClaim = buildStediClaim(claim);
+  } catch (err) {
+    if (err instanceof StediMappingError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Stedi claim mapping failed:", err);
+    return res.status(500).json({ error: "Failed to map claim for Stedi submission." });
+  }
+
+  try {
+    const stediResponse = await submitToStedi(stediClaim, STEDI_API_KEY);
+    res.json({ stediClaim, stediResponse });
+  } catch (err) {
+    if (err instanceof StediSubmissionError) {
+      console.error("Stedi rejected submission:", JSON.stringify(err.details));
+      return res.status(502).json({ error: err.message, details: err.details, stediClaim });
+    }
+    console.error("Stedi submission failed:", err);
+    res.status(502).json({ error: "Stedi submission failed. See server logs for details.", stediClaim });
+  }
 });
 
 app.listen(PORT, () => {

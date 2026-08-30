@@ -9,6 +9,15 @@ const facts = {
   medicalNecessityLanguage: ["Symptoms have persisted for three days."],
 };
 
+// A valid profile so these tests exercise diagnosis-linkage warnings in
+// isolation, not the separate NO_PROVIDER_PROFILE warning (see
+// providerProfiles.test.js for that behavior).
+const testProviderProfile = {
+  name: "Test Practice",
+  npi: "1234567893",
+  address: { address1: "1 Test St", city: "Testville", state: "CA", postalCode: "900010000" },
+};
+
 // A sore throat plus an unrelated immunization: the case where pointing every
 // service line at the first diagnosis produces a denial.
 const twoProblemCodes = [
@@ -19,7 +28,7 @@ const twoProblemCodes = [
 ];
 
 test("each service line points at the diagnosis that justifies it", () => {
-  const claim = populateClaim(facts, twoProblemCodes);
+  const claim = populateClaim(facts, twoProblemCodes, testProviderProfile);
 
   const strep = claim.serviceLines.find((l) => l.code === "87880");
   const shot = claim.serviceLines.find((l) => l.code === "90471");
@@ -30,34 +39,50 @@ test("each service line points at the diagnosis that justifies it", () => {
 });
 
 test("a service line supported by two diagnoses carries both pointers", () => {
-  const claim = populateClaim(facts, [
-    ...twoProblemCodes.slice(0, 2),
-    { code: "99213", codeType: "CPT", description: "Office visit", supportingDiagnoses: ["J02.9", "Z23"] },
-  ]);
+  const claim = populateClaim(
+    facts,
+    [
+      ...twoProblemCodes.slice(0, 2),
+      { code: "99213", codeType: "CPT", description: "Office visit", supportingDiagnoses: ["J02.9", "Z23"] },
+    ],
+    testProviderProfile
+  );
   assert.equal(claim.serviceLines[0].diagnosisPointers, "AB");
 });
 
 test("codes match regardless of formatting", () => {
-  const claim = populateClaim(facts, [
-    { code: "J02.9", codeType: "ICD-10", description: "Acute pharyngitis", supportingDiagnoses: [] },
-    { code: "87880", codeType: "CPT", description: "Strep test", supportingDiagnoses: [" j029 "] },
-  ]);
+  const claim = populateClaim(
+    facts,
+    [
+      { code: "J02.9", codeType: "ICD-10", description: "Acute pharyngitis", supportingDiagnoses: [] },
+      { code: "87880", codeType: "CPT", description: "Strep test", supportingDiagnoses: [" j029 "] },
+    ],
+    testProviderProfile
+  );
   assert.equal(claim.serviceLines[0].diagnosisPointers, "A");
 });
 
 test("a duplicated supporting diagnosis resolves to one pointer", () => {
-  const claim = populateClaim(facts, [
-    { code: "J02.9", codeType: "ICD-10", description: "Acute pharyngitis", supportingDiagnoses: [] },
-    { code: "87880", codeType: "CPT", description: "Strep test", supportingDiagnoses: ["J02.9", "J02.9"] },
-  ]);
+  const claim = populateClaim(
+    facts,
+    [
+      { code: "J02.9", codeType: "ICD-10", description: "Acute pharyngitis", supportingDiagnoses: [] },
+      { code: "87880", codeType: "CPT", description: "Strep test", supportingDiagnoses: ["J02.9", "J02.9"] },
+    ],
+    testProviderProfile
+  );
   assert.equal(claim.serviceLines[0].diagnosisPointers, "A");
 });
 
 test("an unlinked service line is flagged rather than silently pointed at A", () => {
-  const claim = populateClaim(facts, [
-    { code: "J02.9", codeType: "ICD-10", description: "Acute pharyngitis", supportingDiagnoses: [] },
-    { code: "87880", codeType: "CPT", description: "Strep test", supportingDiagnoses: [] },
-  ]);
+  const claim = populateClaim(
+    facts,
+    [
+      { code: "J02.9", codeType: "ICD-10", description: "Acute pharyngitis", supportingDiagnoses: [] },
+      { code: "87880", codeType: "CPT", description: "Strep test", supportingDiagnoses: [] },
+    ],
+    testProviderProfile
+  );
 
   assert.equal(claim.serviceLines[0].diagnosisPointers, "");
   assert.equal(claim.warnings.length, 1);

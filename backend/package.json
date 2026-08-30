@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "seed:provider": "node scripts/seed-provider-profile.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

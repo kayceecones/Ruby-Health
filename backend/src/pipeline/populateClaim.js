@@ -26,7 +26,15 @@ function normalizeCode(code) {
     .replace(/[^A-Z0-9]/g, "");
 }
 
-export function populateClaim(facts, codes) {
+/**
+ * @param {object} facts
+ * @param {array} codes
+ * @param {object|null} [providerProfile] From providerProfiles.getProviderProfile().
+ *   When null, the claim is populated with a clearly-labeled placeholder
+ *   provider and a warning -- a claim never silently carries a fake NPI
+ *   without saying so.
+ */
+export function populateClaim(facts, codes, providerProfile = null) {
   const diagnosisCodes = codes.filter((c) => c.codeType === "ICD-10");
 
   if (diagnosisCodes.length > MAX_DIAGNOSES) {
@@ -106,6 +114,15 @@ export function populateClaim(facts, codes) {
       };
     });
 
+  if (!providerProfile) {
+    warnings.push({
+      code: "NO_PROVIDER_PROFILE",
+      message:
+        "No provider profile is configured. This claim carries a placeholder NPI and will be rejected by a " +
+        "real payer. Set up the provider's profile before submitting anything beyond a sandbox demo.",
+    });
+  }
+
   return {
     patient: {
       name: "Sample Patient (synthetic)",
@@ -113,8 +130,8 @@ export function populateClaim(facts, codes) {
       sex: "U",
       memberId: "SAMPLE-0001",
     },
-    provider: {
-      name: "Dr. Sample Provider",
+    provider: providerProfile || {
+      name: "Sample Provider (no profile configured)",
       npi: "0000000000",
       address: "123 Main St, Sample City, ST 00000",
     },
