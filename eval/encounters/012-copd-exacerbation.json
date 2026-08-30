@@ -1,0 +1,23 @@
+{
+  "id": "012-copd-exacerbation",
+  "tests": "Acute-on-chronic. The exacerbation code is more specific than the base disease code.",
+  "transcript": "My breathing has been much worse the last four days. I'm using the rescue inhaler six or seven times a day, normally it's once. Any fever? No fever. More mucus? Yes, and it's turned green. You're a bit tight on exam, expiratory wheezes throughout, and you're moving less air than at your last visit. Oxygen saturation is ninety one percent on room air, down from ninety five in March. This is a COPD exacerbation. I'm starting prednisone forty milligrams for five days and azithromycin, and I want to see you back in one week. If you get more short of breath before then, go to the emergency room.",
+  "expected": {
+    "diagnoses": [
+      "J44.1"
+    ],
+    "diagnosisAlternates": {},
+    "procedures": [],
+    "emLevel": "99214",
+    "links": {},
+    "mustNotCode": [
+      "J44.9",
+      "J44.0"
+    ],
+    "groundingPhrases": [
+      "worse the last four days",
+      "six or seven times a day",
+      "ninety one percent on room air"
+    ]
+  }
+}

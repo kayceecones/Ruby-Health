@@ -1,0 +1,32 @@
+{
+  "id": "002-pharyngitis-plus-immunization",
+  "tests": "Two unrelated problems in one visit. The failing case for the old pointer bug: the vaccine admin must link to the immunization code, not the sore throat.",
+  "transcript": "What's going on today? Sore throat, started maybe two days ago. Swallowing hurts. Any cough or congestion? A little congestion, no cough. Temperature here was ninety nine point eight. Throat looks red, no white patches, nodes are mildly tender. I'll run a rapid strep to be safe. Negative. That looks viral, so we'll treat symptoms and let it run its course. While you're here, you're due for your flu shot, are you okay getting that today? Yes let's do it. Alright, we'll give the influenza vaccine in your left arm.",
+  "expected": {
+    "diagnoses": [
+      "J02.9",
+      "Z23"
+    ],
+    "diagnosisAlternates": {},
+    "procedures": [
+      "87880",
+      "90471"
+    ],
+    "emLevel": "99213",
+    "links": {
+      "87880": [
+        "J02.9"
+      ],
+      "90471": [
+        "Z23"
+      ]
+    },
+    "mustNotCode": [
+      "J02.0"
+    ],
+    "groundingPhrases": [
+      "started maybe two days ago",
+      "flu shot"
+    ]
+  }
+}

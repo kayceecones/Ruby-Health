@@ -1,0 +1,27 @@
+{
+  "id": "019-conflicting-detail",
+  "tests": "The patient contradicts themselves about duration. The system should not silently pick one and present it as a quoted fact.",
+  "transcript": "How long has the cough been going? About a week. Maybe two weeks actually, it started before my sister visited. Sorry, I think it was closer to three weeks now that I think about the timing. Any fever? No. Bringing anything up? Dry, mostly. Lungs are clear to auscultation bilaterally, no wheeze, no crackles. Vitals are normal. Without fever, a clear exam and normal vitals, this looks like a post-viral cough. No antibiotic is indicated. If it goes past eight weeks we'll get a chest X-ray.",
+  "expected": {
+    "diagnoses": [
+      "R05.3"
+    ],
+    "diagnosisAlternates": {
+      "R05.3": [
+        "R05.9",
+        "R05.1"
+      ]
+    },
+    "procedures": [],
+    "emLevel": "99213",
+    "links": {},
+    "mustNotCode": [
+      "J18.9",
+      "J20.9",
+      "71046"
+    ],
+    "groundingPhrases": [
+      "lungs are clear to auscultation"
+    ]
+  }
+}

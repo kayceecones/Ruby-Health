@@ -1,0 +1,37 @@
+{
+  "id": "008-preventive-plus-problem",
+  "tests": "Annual physical where a new problem is addressed. Both a preventive and a problem visit code are warranted; the problem code carries modifier 25 territory.",
+  "transcript": "You're here for your annual physical. Any concerns before we start? Actually yes, I've had this rash on my left forearm for about two weeks, it itches. Let's cover the physical first. Blood pressure one eighteen over seventy six, weight is stable, heart and lungs are clear, abdomen soft. You're up to date on your colonoscopy, mammogram is due next year. Now the rash, let me look. There's a well-demarcated scaly red patch on the left forearm with raised borders. That looks like tinea corporis, a fungal infection. I'll prescribe topical clotrimazole twice daily for two weeks.",
+  "expected": {
+    "diagnoses": [
+      "Z00.00",
+      "B35.4"
+    ],
+    "diagnosisAlternates": {
+      "Z00.00": [
+        "Z00.01"
+      ]
+    },
+    "procedures": [
+      "99395",
+      "99213"
+    ],
+    "emLevel": "99213",
+    "links": {
+      "99395": [
+        "Z00.00"
+      ],
+      "99213": [
+        "B35.4"
+      ]
+    },
+    "mustNotCode": [
+      "L30.9"
+    ],
+    "groundingPhrases": [
+      "rash on my left forearm",
+      "for about two weeks",
+      "raised borders"
+    ]
+  }
+}

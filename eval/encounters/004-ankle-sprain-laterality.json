@@ -1,0 +1,26 @@
+{
+  "id": "004-ankle-sprain-laterality",
+  "tests": "Specificity trap. Laterality is stated explicitly, so an unspecified-side code is a miss.",
+  "transcript": "I rolled my right ankle playing basketball yesterday evening. Landed on it wrong coming down from a rebound. Could you walk after? I limped off the court, I can put some weight on it but it hurts. There's swelling over the outside of the right ankle and tenderness over the lateral ligaments. No bony tenderness at the malleolus and you can bear weight, so by the Ottawa rules I don't think we need an X-ray. This is a lateral ligament sprain of the right ankle. Ice, compression, elevation, and we'll get you in a brace.",
+  "expected": {
+    "diagnoses": [
+      "S93.401A"
+    ],
+    "diagnosisAlternates": {
+      "S93.401A": [
+        "S93.491A"
+      ]
+    },
+    "procedures": [],
+    "emLevel": "99213",
+    "links": {},
+    "mustNotCode": [
+      "S93.409A",
+      "S93.402A"
+    ],
+    "groundingPhrases": [
+      "rolled my right ankle",
+      "tenderness over the lateral ligaments"
+    ]
+  }
+}

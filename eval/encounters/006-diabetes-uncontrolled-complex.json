@@ -1,0 +1,28 @@
+{
+  "id": "006-diabetes-uncontrolled-complex",
+  "tests": "Higher-complexity chronic visit: uncontrolled disease, medication change, multiple problems addressed. Should level above the stable case.",
+  "transcript": "Your A1c is nine point four, up from eight point one six months ago. I've been struggling, honestly, work has been chaotic and I've been eating out most nights. Are you taking the metformin? Most days. I miss the evening one maybe twice a week. Any numbness or burning in your feet? Actually yes, the last couple months my toes tingle at night. That's concerning for early diabetic neuropathy. Your blood pressure today is one forty eight over ninety two, which is also up. Here's my plan: we're adding semaglutide, starting low, and I want you to work on the evening metformin dose. I'm also starting lisinopril for the blood pressure given your diabetes. We'll recheck in six weeks with labs.",
+  "expected": {
+    "diagnoses": [
+      "E11.42",
+      "I10"
+    ],
+    "diagnosisAlternates": {
+      "E11.42": [
+        "E11.40",
+        "E11.65"
+      ]
+    },
+    "procedures": [],
+    "emLevel": "99214",
+    "links": {},
+    "mustNotCode": [
+      "E11.9"
+    ],
+    "groundingPhrases": [
+      "A1c is nine point four",
+      "toes tingle at night",
+      "one forty eight over ninety two"
+    ]
+  }
+}

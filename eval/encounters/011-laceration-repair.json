@@ -1,0 +1,38 @@
+{
+  "id": "011-laceration-repair",
+  "tests": "Procedure with a size and location that determine the code. Tests that measurable detail is captured.",
+  "transcript": "I cut my left hand on a kitchen knife about an hour ago. Bleeding stopped with pressure. When was your last tetanus? Maybe eight years ago. There's a clean linear laceration on the palmar surface of the left hand, I measure it at two point five centimeters. It's superficial, no tendon involvement, sensation and movement are fully intact distally. I'll clean it out and close it. I placed four sutures with four-oh nylon after local anesthesia with lidocaine. We'll also update your tetanus today. Come back in ten days for suture removal.",
+  "expected": {
+    "diagnoses": [
+      "S61.412A",
+      "Z23"
+    ],
+    "diagnosisAlternates": {
+      "S61.412A": [
+        "S61.402A"
+      ]
+    },
+    "procedures": [
+      "12001",
+      "90471"
+    ],
+    "emLevel": null,
+    "links": {
+      "12001": [
+        "S61.412A"
+      ],
+      "90471": [
+        "Z23"
+      ]
+    },
+    "mustNotCode": [
+      "12002",
+      "12032"
+    ],
+    "groundingPhrases": [
+      "two point five centimeters",
+      "no tendon involvement",
+      "four sutures"
+    ]
+  }
+}

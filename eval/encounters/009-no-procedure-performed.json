@@ -1,0 +1,29 @@
+{
+  "id": "009-no-procedure-performed",
+  "tests": "A procedure is discussed and explicitly deferred. The system must not code a service that never happened.",
+  "transcript": "The headaches are still happening, maybe twice a week. Same as before, behind the right eye, throbbing, light bothers me. Any weakness, numbness, vision loss? No, none of that. Neurological exam is completely normal today. These have the features of migraine and your exam is reassuring. I know you asked about getting a CT scan. With a normal neurological exam and a typical migraine pattern, imaging wouldn't change what we do and carries radiation, so I'd recommend against it for now. Let's try sumatriptan when one starts and keep a headache diary. If anything changes, we'll revisit imaging.",
+  "expected": {
+    "diagnoses": [
+      "G43.909"
+    ],
+    "diagnosisAlternates": {
+      "G43.909": [
+        "G43.009",
+        "G43.109"
+      ]
+    },
+    "procedures": [],
+    "emLevel": "99214",
+    "links": {},
+    "mustNotCode": [
+      "70450",
+      "70460",
+      "70470"
+    ],
+    "groundingPhrases": [
+      "twice a week",
+      "behind the right eye",
+      "exam is completely normal"
+    ]
+  }
+}
