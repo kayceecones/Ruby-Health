@@ -21,6 +21,7 @@ import {
   ProviderProfileError,
   DEFAULT_PROVIDER_ID,
 } from "./providerProfiles.js";
+import { DEMO_PROVIDER_PROFILE } from "../scripts/seed-provider-profile.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIR = path.join(__dirname, "..", "..", "frontend");
@@ -42,6 +43,17 @@ const API_KEY = process.env.ANTHROPIC_API_KEY;
 const STEDI_API_KEY = process.env.STEDI_API_KEY;
 
 const anthropic = API_KEY ? new Anthropic({ apiKey: API_KEY }) : null;
+
+// providerProfiles.js is a JSON file on disk -- fine locally, but Render's
+// disk is ephemeral, so a profile seeded by hand (npm run seed:provider)
+// does not survive a redeploy or a free-tier spin-down/spin-up. Seeding the
+// demo profile here instead, on every boot, means the live service always
+// has a real NPI to submit with -- not the 0000000000 placeholder Stedi
+// rejects -- without a manual step that's easy to forget after a deploy.
+if (!getProviderProfile(DEFAULT_PROVIDER_ID)) {
+  upsertProviderProfile(DEFAULT_PROVIDER_ID, DEMO_PROVIDER_PROFILE);
+  console.log(`Seeded demo provider profile for '${DEFAULT_PROVIDER_ID}' (none found on disk at boot).`);
+}
 
 // Loaded once at boot. Absent or empty is fine: validation reports "unchecked"
 // rather than failing, so a fresh clone with no reference files still runs.

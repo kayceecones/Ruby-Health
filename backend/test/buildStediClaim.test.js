@@ -57,11 +57,43 @@ test("letter pointers resolve to 1-based integer pointers Stedi expects", () => 
 test("every service line carries a serviceDate -- Stedi rejects lines missing one", () => {
   const claim = populateClaim(facts, codes);
   const stediClaim = buildStediClaim(claim);
-  const expected = claim.dateOfService.replace(/-/g, "");
   for (const line of stediClaim.claimInformation.serviceLines) {
-    assert.equal(line.serviceDate, expected);
+    assert.match(line.serviceDate, /^\d{8}$/);
     assert.equal(line.professionalService.serviceDate, undefined); // Stedi rejects it here as an unknown field
   }
+});
+
+test("serviceDate is capped at yesterday (UTC), never claim.dateOfService's default of today", () => {
+  // Stedi validates service date against an internal transaction date computed
+  // in a timezone we don't control -- "today" in UTC can read as "tomorrow" to
+  // Stedi near midnight UTC. populateClaim defaults dateOfService to today, so
+  // this is the realistic case, not an edge case.
+  const claim = populateClaim(facts, codes);
+  assert.equal(claim.dateOfService, new Date().toISOString().slice(0, 10)); // sanity: still today
+  const stediClaim = buildStediClaim(claim);
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10).replace(/-/g, "");
+  for (const line of stediClaim.claimInformation.serviceLines) {
+    assert.equal(line.serviceDate, yesterday);
+  }
+});
+
+test("a genuinely past dateOfService is passed through, not overridden", () => {
+  const claim = populateClaim(facts, codes);
+  claim.dateOfService = "2020-01-15"; // clearly not today, no capping needed
+  const stediClaim = buildStediClaim(claim);
+  assert.equal(stediClaim.claimInformation.serviceLines[0].serviceDate, "20200115");
+});
+
+test("a service line description over 80 characters is truncated for Stedi", () => {
+  const longDescription = "A".repeat(117); // the exact length that triggered Stedi's real rejection
+  const claim = populateClaim(facts, [
+    { code: "J02.9", codeType: "ICD-10", description: "Acute pharyngitis", supportingDiagnoses: [] },
+    { code: "87880", codeType: "CPT", description: longDescription, supportingDiagnoses: ["J02.9"] },
+  ]);
+  const stediClaim = buildStediClaim(claim);
+  const description = stediClaim.claimInformation.serviceLines[0].professionalService.description;
+  assert.equal(description.length, 80);
+  assert.equal(description, longDescription.slice(0, 80));
 });
 
 test("claimInformation carries a signatureIndicator -- Stedi requires one", () => {

@@ -30,6 +30,24 @@ function digitsOnly(value) {
   return String(value ?? "").replace(/\D/g, "");
 }
 
+// Stedi rejects SV1-01-07 (service line description) over 80 characters --
+// an AI-suggested code description can run longer than that.
+function truncate(value, maxLength) {
+  return String(value ?? "").slice(0, maxLength);
+}
+
+// Stedi validates that a service line's date isn't later than its own
+// internal transaction date -- computed in a timezone we don't control, so a
+// service date of "today" in UTC can read as "tomorrow" to Stedi near UTC
+// midnight. Capping at yesterday (UTC) sidesteps the ambiguity entirely:
+// real-world UTC offsets span at most UTC-12 to UTC+14 (26 hours), so a date
+// one full UTC day in the past is never later than "today" in any timezone.
+function safeServiceDate(dateOfService) {
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const candidate = /^\d{4}-\d{2}-\d{2}/.test(dateOfService ?? "") ? dateOfService.slice(0, 10) : yesterday;
+  return digitsOnly(candidate < yesterday ? candidate : yesterday);
+}
+
 /**
  * @param {object} claim   Output of populateClaim(facts, codes).
  * @param {object} [config] Overrides for the sandbox demo submitter/receiver.
@@ -78,13 +96,13 @@ export function buildStediClaim(claim, config = {}) {
         measurementUnit: "UN",
         serviceUnitCount: String(line.units ?? 1),
         compositeDiagnosisCodePointers: { diagnosisCodePointers },
-        description: line.description,
+        description: truncate(line.description, 80),
       },
       // Required by Stedi -- every line needs its own service date, even
       // though every line in this MVP happens on the same encounter date.
       // A sibling of professionalService, not a field inside it -- Stedi's
       // schema rejects it in the wrong spot with an "unknown field" error.
-      serviceDate: digitsOnly(claim.dateOfService) || digitsOnly(new Date().toISOString().slice(0, 10)),
+      serviceDate: safeServiceDate(claim.dateOfService),
     };
   });
 
