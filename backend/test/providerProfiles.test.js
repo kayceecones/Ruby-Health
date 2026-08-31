@@ -52,7 +52,7 @@ test("a valid profile saves and can be read back", () => {
 test("populateClaim carries a NO_PROVIDER_PROFILE warning when none is passed", () => {
   const claim = populateClaim(facts, codes, null);
   assert.ok(claim.warnings.some((w) => w.code === "NO_PROVIDER_PROFILE"));
-  assert.equal(claim.provider.npi, "0000000000");
+  assert.equal(claim.provider.npi, "1999999984");
 });
 
 test("populateClaim uses a real provider profile when one is passed, with no warning", () => {

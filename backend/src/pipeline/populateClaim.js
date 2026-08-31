@@ -132,7 +132,7 @@ export function populateClaim(facts, codes, providerProfile = null) {
     },
     provider: providerProfile || {
       name: "Sample Provider (no profile configured)",
-      npi: "0000000000",
+      npi: "1999999984", // Stedi's published test NPI -- always valid in their sandbox
       address: "123 Main St, Sample City, ST 00000",
     },
     payer: {
