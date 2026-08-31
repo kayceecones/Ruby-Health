@@ -130,8 +130,14 @@ export function populateClaim(facts, codes, providerProfile = null) {
       sex: "U",
       memberId: "SAMPLE-0001",
     },
+    // Hardwired for the MVP demo: both name and NPI are values Stedi's
+    // sandbox actually accepts, not obviously-fake placeholders. This path
+    // only runs when no provider profile is configured at all -- with
+    // server.js seeding one on every boot, that should be rare, but if it's
+    // ever hit, the claim still submits successfully rather than bouncing
+    // on an invalid NPI or an implausible provider name.
     provider: providerProfile || {
-      name: "Sample Provider (no profile configured)",
+      name: "Ruby Health Demo Practice",
       npi: "1999999984", // Stedi's published test NPI -- always valid in their sandbox
       address: "123 Main St, Sample City, ST 00000",
     },
