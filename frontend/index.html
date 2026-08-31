@@ -20,6 +20,8 @@
       --border: #CCC9C7;
       --border-soft: #DFDDDA;
       --accent: #DB2A33;
+      --ruby: #A31F3D;
+      --ruby-hover: #BD2E4C;
       --shadow-card: 0 1px 2px rgba(37, 28, 27, 0.08), 0 1px 1px rgba(37, 28, 27, 0.05);
     }
     * { box-sizing: border-box; }
@@ -29,7 +31,7 @@
     }
     h1, h2, h3, .rh-heading { font-family: 'Manrope', system-ui, sans-serif; }
     .rh-mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
-    a { color: var(--accent); }
+    a { color: var(--ruby); }
     a:hover { color: var(--cherry); }
     button { font-family: 'Manrope', system-ui, sans-serif; cursor: pointer; }
     button:disabled { cursor: not-allowed; opacity: 0.5; }
@@ -57,18 +59,14 @@
       color: var(--ink-2); border: none; background: none; text-align: left; width: 100%; font-size: 13.5px; font-weight: 600;
     }
     .nav-item:hover { background: var(--border-soft); }
-    .nav-item.active { background: var(--accent); color: var(--cream); }
-    .nav-item.active:hover { background: var(--accent); }
+    .nav-item.active { background: var(--ruby); color: var(--cream); }
+    .nav-item.active:hover { background: var(--ruby); }
     .nav-item svg { flex: none; }
     .nav-item .nav-label { flex: 1; }
     .nav-item .nav-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; border: 1.3px solid currentColor; background: transparent; }
     .nav-item.has-data .nav-dot { background: var(--gold); border-color: var(--gold); }
     .nav-item.active.has-data .nav-dot { background: var(--cream); border-color: var(--cream); }
 
-    #sidebarFooter {
-      margin-top: auto; padding: 10px; border-radius: 8px; background: var(--surface);
-      border: 1px solid var(--border-soft); font-size: 11px; line-height: 1.5; color: var(--ink-2);
-    }
 
     /* ---- Main content ---- */
     #main { flex: 1; min-width: 0; padding: 32px 44px; max-width: 900px; }
@@ -91,8 +89,8 @@
       background: var(--card); color: var(--ink);
     }
     .btn:hover:not(:disabled) { background: var(--border-soft); }
-    .btn-primary { border: none; background: var(--accent); color: var(--cream); }
-    .btn-primary:hover:not(:disabled) { background: var(--cherry); }
+    .btn-primary { border: none; background: var(--ruby); color: var(--cream); }
+    .btn-primary:hover:not(:disabled) { background: var(--ruby-hover); }
     .icon-btn {
       width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--border); background: var(--card);
       color: var(--ink-2); display: flex; align-items: center; justify-content: center; flex: none; padding: 0;
@@ -145,7 +143,7 @@
       line-height: 1.65; padding: 12px 14px; box-sizing: border-box; border: 1px solid var(--border-soft);
       border-radius: 10px; background: var(--surface); color: var(--ink); resize: vertical;
     }
-    #transcript:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    #transcript:focus { outline: 2px solid var(--ruby); outline-offset: 1px; }
     #micInterim { font-style: italic; color: var(--ink-2); min-height: 1.2em; margin-top: 6px; font-size: 13px; }
 
     .summary-callout { background: rgba(255, 184, 200, 0.32); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
@@ -177,13 +175,13 @@
       border: 1px dashed var(--border); border-radius: 20px; padding: 6px 12px; font-size: 12.5px; background: transparent;
       color: var(--ink); min-width: 160px; flex: 1;
     }
-    .chip-input:focus { outline: none; border-color: var(--accent); }
+    .chip-input:focus { outline: none; border-color: var(--ruby); }
     .chief-complaint-row { display: flex; align-items: center; gap: 12px; }
     #chiefComplaintInput {
       flex: 1; font-family: 'Manrope', system-ui, sans-serif; font-size: 17px; font-weight: 600; color: var(--ink);
       border: none; border-bottom: 1px solid transparent; background: transparent; padding: 2px 0;
     }
-    #chiefComplaintInput:focus { outline: none; border-bottom-color: var(--accent); }
+    #chiefComplaintInput:focus { outline: none; border-bottom-color: var(--ruby); }
 
     .quote-list { display: flex; flex-direction: column; gap: 8px; }
     .quote-card { display: flex; gap: 10px; padding: 10px 14px; background: var(--surface); border-radius: 10px; align-items: flex-start; }
@@ -280,6 +278,7 @@
     .remove-row { padding: 4px 9px; font-size: 11.5px; }
     .add-row { padding: 6px 12px; margin-top: 10px; font-size: 12.5px; }
 
+    .step-nav { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; }
     #reviewActions { margin-top: 16px; }
     #reviewedBadge {
       display: none; margin-top: 12px; padding: 9px 14px; background: rgba(184, 150, 90, 0.2); color: var(--plum);
@@ -334,9 +333,6 @@
         </button>
       </div>
 
-      <div id="sidebarFooter">
-        Synthetic demo data only — never real patient data, no compliance layer. Jump to any tab any time — every tab reads/writes the same data. Autosaved as you go, cleared when this tab closes. Voice capture uses your browser's built-in speech recognition (not Anthropic).
-      </div>
     </div>
 
     <div id="main">
@@ -382,7 +378,7 @@
 
           <div id="transcriptSummaryBox" class="summary-callout" style="display:none;">
             <div class="summary-callout-head">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="var(--accent)"><path d="M12 2l1.5 5.5L19 9l-5.5 1.5L12 16l-1.5-5.5L5 9l5.5-1.5L12 2z"/></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="var(--ruby)"><path d="M12 2l1.5 5.5L19 9l-5.5 1.5L12 16l-1.5-5.5L5 9l5.5-1.5L12 2z"/></svg>
               <span class="label">Summary</span>
               <span class="badge">Punctuation cleaned</span>
             </div>
@@ -394,12 +390,20 @@
           <div id="cleanupStatus" class="status"></div>
           <div id="extractStatus" class="status"></div>
         </div>
+
+        <div class="step-nav">
+          <button id="toFactsBtn" class="btn btn-primary" type="button">Continue to Facts →</button>
+        </div>
       </div>
 
       <div id="panelFacts" class="panel">
         <div class="panel-title">Clinical facts</div>
         <div class="panel-subtitle">Auto-filled by "Extract clinical facts" on the Transcript tab, or edit/add by hand — either way, this feeds the Codes and Claim tabs.</div>
         <div class="card" id="factsCard"></div>
+
+        <div class="step-nav">
+          <button id="toCodesBtn" class="btn btn-primary" type="button">Continue to Codes →</button>
+        </div>
       </div>
 
       <div id="panelCodes" class="panel">
@@ -410,6 +414,10 @@
         </div>
         <div id="codesStatus" class="status"></div>
         <div id="codesContainer"></div>
+
+        <div class="step-nav">
+          <button id="toClaimBtn" class="btn btn-primary" type="button">Continue to Claim &amp; Review →</button>
+        </div>
       </div>
 
       <div id="panelClaim" class="panel">
@@ -525,6 +533,10 @@
     const submitStediBtn = document.getElementById("submitStediBtn");
     const stediStatusEl = document.getElementById("stediStatus");
     const stediResultEl = document.getElementById("stediResult");
+
+    document.getElementById("toFactsBtn").addEventListener("click", () => showTab("facts"));
+    document.getElementById("toCodesBtn").addEventListener("click", () => showTab("codes"));
+    document.getElementById("toClaimBtn").addEventListener("click", () => showTab("claim"));
 
     function showTab(tab) {
       currentTab = tab;
