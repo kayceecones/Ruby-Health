@@ -23,7 +23,15 @@ function normalizeCode(code) {
     .replace(/[^A-Z0-9]/g, "");
 }
 
-export function populateClaim(facts, codes) {
+/**
+ * @param {object} facts
+ * @param {array} codes
+ * @param {object|null} [providerProfile] From providerProfiles.getProviderProfile().
+ *   When null, the claim is populated with a clearly-labeled placeholder
+ *   provider and a warning -- a claim never silently carries a fake NPI
+ *   without saying so.
+ */
+export function populateClaim(facts, codes, providerProfile = null) {
   const diagnosisCodes = codes.filter((c) => c.codeType === "ICD-10");
 
   if (diagnosisCodes.length > MAX_DIAGNOSES) {
@@ -90,6 +98,15 @@ export function populateClaim(facts, codes) {
       };
     });
 
+  if (!providerProfile) {
+    warnings.push({
+      code: "NO_PROVIDER_PROFILE",
+      message:
+        "No provider profile is configured. This claim carries a placeholder NPI and will be rejected by a " +
+        "real payer. Set up the provider's profile before submitting anything beyond a sandbox demo.",
+    });
+  }
+
   return {
     patient: {
       name: "Sample Patient (synthetic)",
@@ -97,9 +114,15 @@ export function populateClaim(facts, codes) {
       sex: "U",
       memberId: "SAMPLE-0001",
     },
-    provider: {
-      name: "Dr. Sample Provider",
-      npi: "0000000000",
+    // Hardwired for the MVP demo: both name and NPI are values Stedi's
+    // sandbox actually accepts, not obviously-fake placeholders. This path
+    // only runs when no provider profile is configured at all -- with
+    // server.js seeding one on every boot, that should be rare, but if it's
+    // ever hit, the claim still submits successfully rather than bouncing
+    // on an invalid NPI or an implausible provider name.
+    provider: providerProfile || {
+      name: "Ruby Health Demo Practice",
+      npi: "1999999984", // Stedi's published test NPI -- always valid in their sandbox
       address: "123 Main St, Sample City, ST 00000",
     },
     payer: {

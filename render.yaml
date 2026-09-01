@@ -16,3 +16,7 @@ services:
       # Transcript cleanup only -- punctuation repair, not judgment.
       - key: ANTHROPIC_UTILITY_MODEL
         value: claude-haiku-4-5
+      # Stedi sandbox submission (837P claims). Test-mode key only reaches
+      # Stedi's sandbox network.
+      - key: STEDI_API_KEY
+        sync: false

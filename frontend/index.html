@@ -284,18 +284,21 @@
       display: none; margin-top: 12px; padding: 9px 14px; background: rgba(184, 150, 90, 0.2); color: var(--plum);
       border: 1px solid var(--gold); border-radius: 8px; font-size: 13px; font-weight: 600;
     }
-    #submitClaimBtn { margin-top: 12px; }
-    .submission-receipt {
-      margin-top: 12px; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border);
-      background: var(--card); box-shadow: var(--shadow-card); font-size: 13px; color: var(--ink);
+    #stediSubmitRow { display: none; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border-soft); }
+    #stediSubmitRow .stedi-note { font-size: 12.5px; color: var(--ink-2); margin-bottom: 10px; }
+    .stedi-result {
+      margin-top: 12px; padding: 10px 14px; border-radius: 8px; font-size: 13px;
     }
-    .submission-receipt .receipt-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
-    .submission-receipt .receipt-label { color: var(--ink-2); font-weight: 600; }
-    .submission-receipt .receipt-value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .simulated-tag {
-      display: inline-block; margin-top: 10px; font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; padding: 3px 8px; border-radius: 5px;
-      border: 1px solid var(--gold); color: var(--plum); background: rgba(184, 150, 90, 0.15);
+    .stedi-result.accepted {
+      background: rgba(184, 150, 90, 0.2); color: var(--plum); border: 1px solid var(--gold);
+    }
+    .stedi-result.denied {
+      background: rgba(107, 15, 30, 0.08); color: var(--garnet); border: 1px solid var(--garnet);
+    }
+    .stedi-result .stedi-result-title { font-weight: 700; margin-bottom: 4px; }
+    .stedi-result pre {
+      margin-top: 8px; padding: 8px 10px; background: rgba(37, 28, 27, 0.05); border-radius: 6px;
+      font-size: 11.5px; white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow-y: auto;
     }
   </style>
 </head>
@@ -419,17 +422,20 @@
 
       <div id="panelClaim" class="panel">
         <div class="panel-title">Claim draft &amp; review</div>
-        <div class="panel-subtitle">Patient/provider/payer fields are placeholders since no real patient is involved. Submission below is simulated — this demo has no real payer or clearinghouse connection.</div>
+        <div class="panel-subtitle">Patient and payer fields are synthetic placeholders since no real patient is involved. The provider is a real seeded sandbox profile. After review, this claim can be submitted to Stedi's sandbox Test Payer only — never a real payer.</div>
         <button id="populateClaimBtn" class="btn btn-primary" type="button">Populate claim from current facts + codes</button>
         <div id="claimStatus" class="status"></div>
         <div id="claimForm"></div>
         <div id="reviewActions" style="display: none;">
           <button id="markReviewedBtn" class="btn btn-primary" type="button">Mark as reviewed</button>
           <button id="editAgainBtn" class="btn" style="display: none;" type="button">Edit again</button>
-          <div id="reviewedBadge">✓ Reviewed — ready to submit below.</div>
-          <button id="submitClaimBtn" class="btn btn-primary" style="display: none;" type="button">Submit to payer (simulated)</button>
-          <div id="submitStatus" class="status"></div>
-          <div id="submissionResult"></div>
+          <div id="reviewedBadge">✓ Reviewed.</div>
+          <div id="stediSubmitRow">
+            <div class="stedi-note">Last step: submit this reviewed claim to Stedi's sandbox Test Payer. This is a synthetic/demo submission — it never reaches a real payer.</div>
+            <button id="submitStediBtn" class="btn btn-primary" type="button">Submit to Stedi (sandbox)</button>
+            <div id="stediStatus" class="status"></div>
+            <div id="stediResult" class="stedi-result" style="display: none;"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -454,7 +460,8 @@
       codes: [],
       claim: null,
       reviewed: false,
-      submission: null,
+      // null (not yet submitted), or { ok: true, response } / { ok: false, error, details }
+      stediSubmission: null,
     };
 
     // Persisted to sessionStorage, not localStorage: it survives a page
@@ -522,9 +529,10 @@
     const markReviewedBtn = document.getElementById("markReviewedBtn");
     const editAgainBtn = document.getElementById("editAgainBtn");
     const reviewedBadgeEl = document.getElementById("reviewedBadge");
-    const submitClaimBtn = document.getElementById("submitClaimBtn");
-    const submitStatusEl = document.getElementById("submitStatus");
-    const submissionResultEl = document.getElementById("submissionResult");
+    const stediSubmitRowEl = document.getElementById("stediSubmitRow");
+    const submitStediBtn = document.getElementById("submitStediBtn");
+    const stediStatusEl = document.getElementById("stediStatus");
+    const stediResultEl = document.getElementById("stediResult");
 
     document.getElementById("toFactsBtn").addEventListener("click", () => showTab("facts"));
     document.getElementById("toCodesBtn").addEventListener("click", () => showTab("codes"));
@@ -1311,6 +1319,7 @@
         claimStatusEl.textContent = "";
         state.claim = data.claim;
         state.reviewed = false;
+        state.stediSubmission = null;
         renderClaimForm();
         applyReviewUiState();
         renderNav();
@@ -1342,8 +1351,10 @@
       reviewedBadgeEl.style.display = state.reviewed ? "block" : "none";
       setClaimEditable(!state.reviewed);
 
-      submitClaimBtn.style.display = state.reviewed && !state.submission ? "inline-block" : "none";
-      renderSubmissionResult();
+      // Submitting to Stedi is the last step -- only reachable once the
+      // reviewer has marked the claim reviewed, never before.
+      stediSubmitRowEl.style.display = state.reviewed ? "block" : "none";
+      renderStediResult();
     }
 
     markReviewedBtn.addEventListener("click", () => {
@@ -1354,55 +1365,63 @@
 
     editAgainBtn.addEventListener("click", () => {
       state.reviewed = false;
-      // A claim that goes back to editing invalidates whatever was submitted,
-      // since the payer never saw the version now being changed.
-      state.submission = null;
-      submitStatusEl.textContent = "";
-      submitStatusEl.className = "status";
+      // Editing invalidates any prior submission -- a resubmission after an
+      // edit is a new attempt, not a resend of the old one.
+      state.stediSubmission = null;
+      stediStatusEl.textContent = "";
+      stediStatusEl.className = "status";
       applyReviewUiState();
       renderNav();
     });
 
-    function renderSubmissionResult() {
-      submissionResultEl.innerHTML = "";
-      if (!state.submission) return;
-
-      const r = state.submission;
-      const box = document.createElement("div");
-      box.className = "submission-receipt";
-
-      const rows = [
-        ["Status", r.status === "accepted" ? "Accepted" : r.status],
-        ["Confirmation number", r.confirmationNumber],
-        ["Payer", r.payerName],
-        ["Submitted", new Date(r.submittedAt).toLocaleString()],
-      ];
-      for (const [label, value] of rows) {
-        const row = document.createElement("div");
-        row.className = "receipt-row";
-        const l = document.createElement("span");
-        l.className = "receipt-label";
-        l.textContent = label;
-        const v = document.createElement("span");
-        v.className = "receipt-value";
-        v.textContent = value;
-        row.appendChild(l);
-        row.appendChild(v);
-        box.appendChild(row);
+    function renderStediResult() {
+      const result = state.stediSubmission;
+      if (!result) {
+        stediResultEl.style.display = "none";
+        submitStediBtn.style.display = "inline-block";
+        submitStediBtn.textContent = "Submit to Stedi (sandbox)";
+        return;
       }
 
-      const tag = document.createElement("div");
-      tag.className = "simulated-tag";
-      tag.textContent = "Simulated — no real payer was contacted";
-      box.appendChild(tag);
-
-      submissionResultEl.appendChild(box);
+      stediResultEl.style.display = "block";
+      if (result.ok) {
+        submitStediBtn.style.display = "none";
+        stediResultEl.className = "stedi-result accepted";
+        stediResultEl.innerHTML =
+          '<div class="stedi-result-title">&#10003; Accepted by Stedi’s sandbox Test Payer.</div>' +
+          "<div>A 277CA acknowledgment follows asynchronously from Stedi -- not shown here.</div>" +
+          "<pre></pre>";
+        stediResultEl.querySelector("pre").textContent = JSON.stringify(result.response, null, 2);
+      } else {
+        // Denial always shows on its own -- never buried behind a generic
+        // "submission failed" message. Both the top-level reason and Stedi's
+        // structured detail (when Stedi returned one) are shown.
+        submitStediBtn.style.display = "inline-block";
+        submitStediBtn.textContent = "Retry submission";
+        stediResultEl.className = "stedi-result denied";
+        const detailText = result.details ? JSON.stringify(result.details, null, 2) : null;
+        stediResultEl.innerHTML =
+          '<div class="stedi-result-title">&#10007; Denied -- ' +
+          escapeHtml(result.error || "Stedi rejected the submission.") +
+          "</div>" +
+          (detailText ? "<pre></pre>" : "<div>Stedi returned no further detail -- this may be a network or connectivity problem rather than Stedi rejecting the claim.</div>");
+        if (detailText) stediResultEl.querySelector("pre").textContent = detailText;
+      }
     }
 
-    async function runSubmitClaim() {
-      submitClaimBtn.disabled = true;
-      submitStatusEl.textContent = "Submitting...";
-      submitStatusEl.className = "status";
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    async function runSubmitToStedi() {
+      if (!state.claim) return;
+
+      submitStediBtn.disabled = true;
+      stediStatusEl.textContent = "Submitting to Stedi's sandbox...";
+      stediStatusEl.className = "status";
+      stediResultEl.style.display = "none";
 
       try {
         const res = await fetch("/api/submit-claim", {
@@ -1411,27 +1430,28 @@
           body: JSON.stringify({ claim: state.claim }),
         });
         const data = await res.json();
+        stediStatusEl.textContent = "";
 
         if (!res.ok) {
-          submitStatusEl.textContent = data.error || "Submission failed.";
-          submitStatusEl.className = "status error";
-          return;
+          state.stediSubmission = { ok: false, error: data.error, details: data.details || null };
+        } else {
+          state.stediSubmission = { ok: true, response: data.stediResponse };
         }
-
-        submitStatusEl.textContent = "";
-        state.submission = data.result;
-        applyReviewUiState();
+        renderStediResult();
         renderNav();
       } catch (err) {
-        console.error("Submit claim error:", err);
-        submitStatusEl.textContent = "Something went wrong: " + err.message;
-        submitStatusEl.className = "status error";
+        console.error("Submit to Stedi error:", err);
+        state.stediSubmission = { ok: false, error: "Something went wrong: " + err.message, details: null };
+        stediStatusEl.textContent = "";
+        renderStediResult();
+        renderNav();
       } finally {
-        submitClaimBtn.disabled = false;
+        submitStediBtn.disabled = false;
       }
     }
 
-    submitClaimBtn.addEventListener("click", () => runSubmitClaim());
+    submitStediBtn.addEventListener("click", () => runSubmitToStedi());
+>>>>>>> origin/master
 
     function claimLabeledInput(labelText, value, onChange, multiline) {
       const label = document.createElement("label");
