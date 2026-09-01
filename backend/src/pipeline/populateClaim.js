@@ -4,9 +4,6 @@
 // CMS-1500 box 21 carries at most twelve diagnoses, pointered A through L.
 const MAX_DIAGNOSES = 12;
 
-// Box 24E accepts at most four diagnosis pointers per service line.
-const MAX_POINTERS_PER_LINE = 4;
-
 export class ClaimError extends Error {
   constructor(message) {
     super(message);
@@ -75,10 +72,7 @@ export function populateClaim(facts, codes, providerProfile = null) {
         else if (!resolved.includes(pointer)) resolved.push(pointer);
       }
 
-      const kept = resolved.slice(0, MAX_POINTERS_PER_LINE);
-      const dropped = resolved.slice(MAX_POINTERS_PER_LINE);
-
-      if (kept.length === 0) {
+      if (resolved.length === 0) {
         warnings.push({
           code: "UNLINKED_SERVICE_LINE",
           line: c.code,
@@ -96,20 +90,10 @@ export function populateClaim(facts, codes, providerProfile = null) {
             `claim's diagnoses. Add the diagnosis or correct the link.`,
         });
       }
-      if (dropped.length > 0) {
-        warnings.push({
-          code: "POINTERS_TRUNCATED",
-          line: c.code,
-          message:
-            `Service line ${c.code} supports more than ${MAX_POINTERS_PER_LINE} diagnoses; ` +
-            `pointers ${dropped.join(", ")} were dropped to fit the claim form.`,
-        });
-      }
-
       return {
         code: c.code,
         description: c.description,
-        diagnosisPointers: kept.join(""),
+        diagnosisPointers: resolved.join(""),
         units: 1,
       };
     });

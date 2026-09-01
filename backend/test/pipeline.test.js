@@ -100,7 +100,7 @@ test("a supporting diagnosis that is not on the claim is flagged", () => {
   assert.equal(claim.warnings.some((w) => w.code === "UNLINKED_SERVICE_LINE"), true);
 });
 
-test("pointers past the fourth are dropped and reported", () => {
+test("a service line keeps every pointer the visit actually supports, past four", () => {
   const diagnoses = ["A00", "B00", "C00", "D00", "E00"].map((code) => ({
     code,
     codeType: "ICD-10",
@@ -110,10 +110,10 @@ test("pointers past the fourth are dropped and reported", () => {
   const claim = populateClaim(facts, [
     ...diagnoses,
     { code: "99213", codeType: "CPT", description: "Office visit", supportingDiagnoses: ["A00", "B00", "C00", "D00", "E00"] },
-  ]);
+  ], testProviderProfile);
 
-  assert.equal(claim.serviceLines[0].diagnosisPointers, "ABCD");
-  assert.equal(claim.warnings.some((w) => w.code === "POINTERS_TRUNCATED"), true);
+  assert.equal(claim.serviceLines[0].diagnosisPointers, "ABCDE");
+  assert.equal(claim.warnings.length, 0);
 });
 
 test("more than twelve diagnoses is rejected instead of running past Z", () => {
