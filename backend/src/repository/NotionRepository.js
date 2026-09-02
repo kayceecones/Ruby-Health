@@ -79,7 +79,7 @@ function parseCase(page) {
   return {
     caseId: titleText(page, "case_id"),
     patientId: richText(page, "patient_id"),
-    title: richText(page, "title"),
+    title: richText(page, "case_title"),
     status: selectValue(page, "status"),
     openedAt: dateValue(page, "opened_at"),
     closedAt: dateValue(page, "closed_at"),
@@ -243,7 +243,12 @@ export class NotionRepository extends Repository {
       properties: {
         case_id: { title: [{ text: { content: caseId } }] },
         patient_id: { rich_text: [{ text: { content: patientId } }] },
-        title: { rich_text: [{ text: { content: title } }] },
+        // Notion's API key "title" always refers to whichever property is
+        // type=title (case_id here), regardless of a property's actual
+        // display name -- a property literally named "title" is unreachable
+        // under that key. The Cases database's human-readable title lives in
+        // a "case_title" column for exactly this reason.
+        case_title: { rich_text: [{ text: { content: title } }] },
         status: { select: { name: "open" } },
         opened_at: { date: { start: openedAt } },
       },
