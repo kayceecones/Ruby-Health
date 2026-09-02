@@ -1,0 +1,171 @@
+// The persistence interface for everything Ruby remembers: patients, their
+// episodes of care, the visits within each, the versioned pipeline output
+// for each visit, and the claims produced from it.
+//
+// Application code (server.js, the pipeline) must depend only on this
+// shape -- never on NotionRepository directly, never on a Notion client,
+// never on a Notion page ID. That boundary is the whole point: the demo
+// runs on Notion because it holds no real patient data and needs no BAA;
+// production swaps in a Postgres-backed implementation of the same
+// interface without touching a call site. See the "V2 ruby MVP -
+// relational database" handoff doc for the full constraint.
+//
+// Every method here throws NotImplementedError by default. A concrete
+// repository overrides only the methods it actually backs -- the base
+// class exists so the full shape is visible in one place before any
+// implementation exists, and so an unimplemented method fails loudly
+// instead of silently returning undefined.
+
+export class NotImplementedError extends Error {
+  constructor(methodName) {
+    super(`${methodName} is not implemented on this repository.`);
+    this.name = "NotImplementedError";
+  }
+}
+
+export class Repository {
+  // --- Patient ---------------------------------------------------------
+
+  /** @param {{ name: string, dateOfBirth: string }} input
+   *  @returns {Promise<object>} the created Patient */
+  async createPatient(_input) {
+    throw new NotImplementedError("createPatient");
+  }
+
+  /** @returns {Promise<object|null>} the Patient, or null if none exists */
+  async getPatient(_patientId) {
+    throw new NotImplementedError("getPatient");
+  }
+
+  /** @returns {Promise<object[]>} every Patient */
+  async listPatients() {
+    throw new NotImplementedError("listPatients");
+  }
+
+  // --- Case --------------------------------------------------------------
+
+  /** @param {{ patientId: string, title: string }} input
+   *  @returns {Promise<object>} the created Case, status "open" */
+  async createCase(_input) {
+    throw new NotImplementedError("createCase");
+  }
+
+  /** @returns {Promise<object|null>} the Case, or null if none exists */
+  async getCase(_caseId) {
+    throw new NotImplementedError("getCase");
+  }
+
+  /** @returns {Promise<object[]>} every Case for a patient, open and closed */
+  async listCasesForPatient(_patientId) {
+    throw new NotImplementedError("listCasesForPatient");
+  }
+
+  /** @returns {Promise<object>} the Case, now closed */
+  async closeCase(_caseId) {
+    throw new NotImplementedError("closeCase");
+  }
+
+  // --- Encounter -----------------------------------------------------------
+
+  /** @param {{ caseId: string, patientId: string, occurredAt: string }} input
+   *  @returns {Promise<object>} the created Encounter, status "draft" */
+  async createEncounter(_input) {
+    throw new NotImplementedError("createEncounter");
+  }
+
+  /** @returns {Promise<object|null>} the Encounter, or null if none exists */
+  async getEncounter(_encounterId) {
+    throw new NotImplementedError("getEncounter");
+  }
+
+  /** @returns {Promise<object[]>} every Encounter for a case, in chronological order */
+  async listEncountersForCase(_caseId) {
+    throw new NotImplementedError("listEncountersForCase");
+  }
+
+  /** @returns {Promise<object>} the Encounter with its status field updated */
+  async updateEncounterStatus(_encounterId, _status) {
+    throw new NotImplementedError("updateEncounterStatus");
+  }
+
+  // --- Artifact (versioned pipeline stage output) ---------------------------
+
+  /** @param {{ encounterId: string, stage: string, content: object, createdBy: string }} input
+   *  @returns {Promise<object>} the created Artifact, version auto-incremented
+   *  for this (encounterId, stage) pair */
+  async createArtifact(_input) {
+    throw new NotImplementedError("createArtifact");
+  }
+
+  /** @returns {Promise<object[]>} every version of every stage for an encounter,
+   *  newest first within each stage */
+  async getArtifactHistory(_encounterId) {
+    throw new NotImplementedError("getArtifactHistory");
+  }
+
+  /** @returns {Promise<object|null>} the latest Artifact for (encounterId, stage) */
+  async getLatestArtifact(_encounterId, _stage) {
+    throw new NotImplementedError("getLatestArtifact");
+  }
+
+  // --- Claim -----------------------------------------------------------------
+
+  /** @param {{ encounterId: string, artifactId: string, claimType: string,
+   *  parentClaimId?: string, payerName: string, memberId: string }} input
+   *  @returns {Promise<object>} the created Claim, status "draft" */
+  async createClaim(_input) {
+    throw new NotImplementedError("createClaim");
+  }
+
+  /** @returns {Promise<object|null>} the Claim, or null if none exists */
+  async getClaim(_claimId) {
+    throw new NotImplementedError("getClaim");
+  }
+
+  /** @returns {Promise<object>} the Claim with its status (and submittedAt, if
+   *  moving to "submitted") updated */
+  async updateClaimStatus(_claimId, _status) {
+    throw new NotImplementedError("updateClaimStatus");
+  }
+
+  /** @returns {Promise<object[]>} the original claim plus every claim chained
+   *  to it via parentClaimId, oldest first */
+  async getClaimChain(_claimId) {
+    throw new NotImplementedError("getClaimChain");
+  }
+
+  // --- Document (schema slot -- no upload or extraction UI in this chunk) ----
+
+  /** @param {{ patientId: string, caseId?: string, source: string,
+   *  documentDate: string, storageRef: string }} input
+   *  @returns {Promise<object>} the created Document, extractionStatus "none" */
+  async createDocument(_input) {
+    throw new NotImplementedError("createDocument");
+  }
+
+  /** @returns {Promise<object|null>} the Document, or null if none exists */
+  async getDocument(_documentId) {
+    throw new NotImplementedError("getDocument");
+  }
+
+  /** @returns {Promise<object[]>} every Document for a patient */
+  async listDocumentsForPatient(_patientId) {
+    throw new NotImplementedError("listDocumentsForPatient");
+  }
+}
+
+// Blob storage is a separate small interface, not part of Repository:
+// Documents are files, and files don't belong in Notion (or in Postgres
+// rows) regardless of which Repository implementation is active. A
+// Document row's storageRef points at whatever this returns.
+export class BlobStore {
+  /** @returns {Promise<string>} a storageRef that getBlob can resolve later */
+  async putBlob(_key, _content) {
+    throw new NotImplementedError("putBlob");
+  }
+
+  /** @returns {Promise<Buffer>} the blob's raw content */
+  async getBlob(_storageRef) {
+    throw new NotImplementedError("getBlob");
+  }
+}
