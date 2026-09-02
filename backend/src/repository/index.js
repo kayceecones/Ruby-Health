@@ -16,6 +16,7 @@ export function createNotionRepositoryFromEnv(env = process.env) {
   const casesDataSourceId = env.NOTION_CASES_DATA_SOURCE_ID;
   const encountersDataSourceId = env.NOTION_ENCOUNTERS_DATA_SOURCE_ID;
   const artifactsDataSourceId = env.NOTION_ARTIFACTS_DATA_SOURCE_ID;
+  const claimsDataSourceId = env.NOTION_CLAIMS_DATA_SOURCE_ID;
 
   const missing = [
     !apiKey && "NOTION_API_KEY",
@@ -23,6 +24,7 @@ export function createNotionRepositoryFromEnv(env = process.env) {
     !casesDataSourceId && "NOTION_CASES_DATA_SOURCE_ID",
     !encountersDataSourceId && "NOTION_ENCOUNTERS_DATA_SOURCE_ID",
     !artifactsDataSourceId && "NOTION_ARTIFACTS_DATA_SOURCE_ID",
+    !claimsDataSourceId && "NOTION_CLAIMS_DATA_SOURCE_ID",
   ].filter(Boolean);
   if (missing.length > 0) {
     throw new Error(`Missing Notion repository config: ${missing.join(", ")}. Set these in backend/.env.`);
@@ -34,5 +36,6 @@ export function createNotionRepositoryFromEnv(env = process.env) {
     casesDataSourceId,
     encountersDataSourceId,
     artifactsDataSourceId,
+    claimsDataSourceId,
   });
 }

@@ -22,6 +22,8 @@ export class NotionRepositoryError extends Error {
 
 const STAGES = ["transcript", "facts", "codes", "claim"];
 const CREATED_BY_VALUES = ["system", "provider_edit"];
+const CLAIM_TYPES = ["original", "corrected", "secondary"];
+const CLAIM_STATUSES = ["draft", "submitted", "accepted", "denied", "pending"];
 
 function titleText(page, property) {
   return page.properties[property]?.title?.[0]?.plain_text || "";
@@ -94,6 +96,21 @@ function parseEncounter(page) {
   };
 }
 
+function parseClaim(page) {
+  return {
+    claimId: titleText(page, "claim_id"),
+    encounterId: richText(page, "encounter_id"),
+    artifactId: richText(page, "artifact_id"),
+    claimType: selectValue(page, "claim_type"),
+    parentClaimId: richText(page, "parent_claim_id") || null,
+    payerName: richText(page, "payer_name"),
+    memberId: richText(page, "member_id"),
+    status: selectValue(page, "status"),
+    submittedAt: dateValue(page, "submitted_at"),
+    createdAt: page.properties.created_at?.created_time || page.created_time || null,
+  };
+}
+
 function parseArtifact(page) {
   const raw = richTextAll(page, "content");
   let content = null;
@@ -119,12 +136,13 @@ export class NotionRepository extends Repository {
   /**
    * @param {{ client: import("@notionhq/client").Client,
    *   patientsDataSourceId: string, casesDataSourceId: string,
-   *   encountersDataSourceId?: string, artifactsDataSourceId?: string }} config
-   *   The encounter/artifact IDs are optional for now so existing callers built
-   *   against just Patient/Case don't need to change -- methods that need them
-   *   throw a clear config error instead of a confusing undefined-ID query.
+   *   encountersDataSourceId?: string, artifactsDataSourceId?: string,
+   *   claimsDataSourceId?: string }} config
+   *   The encounter/artifact/claim IDs are optional for now so existing callers
+   *   built against just Patient/Case don't need to change -- methods that need
+   *   them throw a clear config error instead of a confusing undefined-ID query.
    */
-  constructor({ client, patientsDataSourceId, casesDataSourceId, encountersDataSourceId, artifactsDataSourceId }) {
+  constructor({ client, patientsDataSourceId, casesDataSourceId, encountersDataSourceId, artifactsDataSourceId, claimsDataSourceId }) {
     super();
     if (!client) throw new NotionRepositoryError("NotionRepository requires a Notion client.");
     if (!patientsDataSourceId) throw new NotionRepositoryError("NotionRepository requires patientsDataSourceId.");
@@ -134,6 +152,7 @@ export class NotionRepository extends Repository {
     this.casesDataSourceId = casesDataSourceId;
     this.encountersDataSourceId = encountersDataSourceId;
     this.artifactsDataSourceId = artifactsDataSourceId;
+    this.claimsDataSourceId = claimsDataSourceId;
   }
 
   _requireEncountersDataSource() {
@@ -145,6 +164,12 @@ export class NotionRepository extends Repository {
   _requireArtifactsDataSource() {
     if (!this.artifactsDataSourceId) {
       throw new NotionRepositoryError("NotionRepository was not configured with artifactsDataSourceId.");
+    }
+  }
+
+  _requireClaimsDataSource() {
+    if (!this.claimsDataSourceId) {
+      throw new NotionRepositoryError("NotionRepository was not configured with claimsDataSourceId.");
     }
   }
 
@@ -329,6 +354,97 @@ export class NotionRepository extends Repository {
     if (pages.length === 0) return null;
     const artifacts = pages.map(parseArtifact);
     return artifacts.reduce((latest, artifact) => (artifact.version > latest.version ? artifact : latest));
+  }
+
+  async createClaim({ encounterId, artifactId, claimType, parentClaimId, payerName, memberId }) {
+    this._requireClaimsDataSource();
+    if (!CLAIM_TYPES.includes(claimType)) {
+      throw new NotionRepositoryError(`createClaim claimType must be one of: ${CLAIM_TYPES.join(", ")}.`);
+    }
+    if (!payerName) throw new NotionRepositoryError("createClaim requires a payerName.");
+    if (!memberId) throw new NotionRepositoryError("createClaim requires a memberId.");
+
+    const encounter = await this.getEncounter(encounterId);
+    if (!encounter) throw new NotionRepositoryError(`No encounter found with encounter_id '${encounterId}'.`);
+
+    const artifact = await this._findByTitle(this.artifactsDataSourceId, "artifact_id", artifactId);
+    if (!artifact) throw new NotionRepositoryError(`No artifact found with artifact_id '${artifactId}'.`);
+
+    if (parentClaimId) {
+      const parent = await this.getClaim(parentClaimId);
+      if (!parent) throw new NotionRepositoryError(`No claim found with claim_id '${parentClaimId}'.`);
+    }
+
+    const claimId = await this._nextSequentialId(this.claimsDataSourceId, "claim_id", "CL");
+    const page = await this.client.pages.create({
+      parent: { data_source_id: this.claimsDataSourceId },
+      properties: {
+        claim_id: { title: [{ text: { content: claimId } }] },
+        encounter_id: { rich_text: [{ text: { content: encounterId } }] },
+        artifact_id: { rich_text: [{ text: { content: artifactId } }] },
+        claim_type: { select: { name: claimType } },
+        parent_claim_id: { rich_text: [{ text: { content: parentClaimId || "" } }] },
+        payer_name: { rich_text: [{ text: { content: payerName } }] },
+        member_id: { rich_text: [{ text: { content: memberId } }] },
+        status: { select: { name: "draft" } },
+      },
+    });
+    return parseClaim(page);
+  }
+
+  async getClaim(claimId) {
+    this._requireClaimsDataSource();
+    const page = await this._findByTitle(this.claimsDataSourceId, "claim_id", claimId);
+    return page ? parseClaim(page) : null;
+  }
+
+  async updateClaimStatus(claimId, status) {
+    this._requireClaimsDataSource();
+    if (!CLAIM_STATUSES.includes(status)) {
+      throw new NotionRepositoryError(`updateClaimStatus status must be one of: ${CLAIM_STATUSES.join(", ")}.`);
+    }
+    const page = await this._findByTitle(this.claimsDataSourceId, "claim_id", claimId);
+    if (!page) throw new NotionRepositoryError(`No claim found with claim_id '${claimId}'.`);
+
+    const properties = { status: { select: { name: status } } };
+    if (status === "submitted") {
+      properties.submitted_at = { date: { start: new Date().toISOString().slice(0, 10) } };
+    }
+    const updated = await this.client.pages.update({ page_id: page.id, properties });
+    return parseClaim(updated);
+  }
+
+  // A "chain" is every claim connected to a given one via parent_claim_id --
+  // corrections and secondary submissions off the same original claim, not
+  // necessarily a single straight line. All claims in a chain attach to the
+  // same encounter (see the handoff doc), so the traversal is scoped there
+  // rather than across the whole Claims database.
+  async getClaimChain(claimId) {
+    this._requireClaimsDataSource();
+    const claim = await this.getClaim(claimId);
+    if (!claim) throw new NotionRepositoryError(`No claim found with claim_id '${claimId}'.`);
+
+    const encounterClaims = await this._queryAll(this.claimsDataSourceId, {
+      property: "encounter_id",
+      rich_text: { equals: claim.encounterId },
+    });
+    const claimsById = new Map(encounterClaims.map(parseClaim).map((c) => [c.claimId, c]));
+
+    let root = claimsById.get(claimId);
+    while (root.parentClaimId && claimsById.has(root.parentClaimId)) {
+      root = claimsById.get(root.parentClaimId);
+    }
+
+    const chain = [];
+    const queue = [root];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      chain.push(current);
+      for (const candidate of claimsById.values()) {
+        if (candidate.parentClaimId === current.claimId) queue.push(candidate);
+      }
+    }
+    return chain.sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
   }
 
   async _findByTitle(dataSourceId, titleProperty, value) {

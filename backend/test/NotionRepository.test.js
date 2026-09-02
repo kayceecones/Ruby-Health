@@ -8,7 +8,7 @@ import { NotionRepository, NotionRepositoryError } from "../src/repository/Notio
 // NotionRepository's logic without a network call or a real integration
 // token. One store per data source, one title property each.
 function fakeNotionClient() {
-  const stores = { patients: new Map(), cases: new Map(), encounters: new Map(), artifacts: new Map() };
+  const stores = { patients: new Map(), cases: new Map(), encounters: new Map(), artifacts: new Map(), claims: new Map() };
   let nextPageId = 1;
 
   function storeFor(dataSourceId) {
@@ -16,6 +16,7 @@ function fakeNotionClient() {
     if (dataSourceId === "ds_cases") return stores.cases;
     if (dataSourceId === "ds_encounters") return stores.encounters;
     if (dataSourceId === "ds_artifacts") return stores.artifacts;
+    if (dataSourceId === "ds_claims") return stores.claims;
     throw new Error(`fakeNotionClient: unknown data source '${dataSourceId}'`);
   }
 
@@ -63,10 +64,14 @@ function fakeNotionClient() {
     pages: {
       async create({ parent, properties }) {
         const store = storeFor(parent.data_source_id);
+        // Monotonically increasing, not a fixed timestamp -- getClaimChain
+        // sorts by createdAt, so distinct creation order needs to be
+        // observable, the way it would be against the real API.
+        const createdTime = new Date(2026, 8, 2, 0, 0, nextPageId).toISOString();
         const page = {
           id: `page_${nextPageId++}`,
-          created_time: "2026-09-02T00:00:00.000Z",
-          properties: { ...toResponseProperties(properties), created_at: { type: "created_time", created_time: "2026-09-02T00:00:00.000Z" } },
+          created_time: createdTime,
+          properties: { ...toResponseProperties(properties), created_at: { type: "created_time", created_time: createdTime } },
         };
         store.set(page.id, page);
         return page;
@@ -92,6 +97,7 @@ function makeRepository() {
     casesDataSourceId: "ds_cases",
     encountersDataSourceId: "ds_encounters",
     artifactsDataSourceId: "ds_artifacts",
+    claimsDataSourceId: "ds_claims",
   });
 }
 
@@ -99,6 +105,21 @@ async function makeCase(repo, { patientName = "Molly Chen", caseTitle = "Broken 
   const patient = await repo.createPatient({ name: patientName, dateOfBirth: "1990-04-12" });
   const encounterCase = await repo.createCase({ patientId: patient.patientId, title: caseTitle });
   return { patient, case: encounterCase };
+}
+
+// A claim needs an encounter and a claim-stage artifact to point at --
+// this builds both so claim tests can start from "here's an encounter
+// with a claim artifact ready" instead of repeating the setup.
+async function makeEncounterWithClaimArtifact(repo) {
+  const { case: c } = await makeCase(repo);
+  const encounter = await repo.createEncounter({ caseId: c.caseId, occurredAt: "2026-09-01" });
+  const artifact = await repo.createArtifact({
+    encounterId: encounter.encounterId,
+    stage: "claim",
+    content: { serviceLines: [{ code: "87880", diagnosisPointers: "A" }] },
+    createdBy: "system",
+  });
+  return { encounter, artifact };
 }
 
 test("createPatient assigns sequential IDs starting at P001", async () => {
@@ -336,4 +357,166 @@ test("getLatestArtifact returns null when a stage has no artifacts yet", async (
   const encounter = await repo.createEncounter({ caseId: c.caseId, occurredAt: "2026-09-01" });
 
   assert.equal(await repo.getLatestArtifact(encounter.encounterId, "claim"), null);
+});
+
+test("createClaim creates an original claim in draft status", async () => {
+  const repo = makeRepository();
+  const { encounter, artifact } = await makeEncounterWithClaimArtifact(repo);
+
+  const claim = await repo.createClaim({
+    encounterId: encounter.encounterId,
+    artifactId: artifact.artifactId,
+    claimType: "original",
+    payerName: "Sample Payer Insurance",
+    memberId: "M123456",
+  });
+
+  assert.equal(claim.claimId, "CL001");
+  assert.equal(claim.status, "draft");
+  assert.equal(claim.claimType, "original");
+  assert.equal(claim.parentClaimId, null);
+  assert.equal(claim.submittedAt, null);
+});
+
+test("createClaim rejects an encounterId, artifactId, or parentClaimId that doesn't exist", async () => {
+  const repo = makeRepository();
+  const { encounter, artifact } = await makeEncounterWithClaimArtifact(repo);
+  const validInput = {
+    encounterId: encounter.encounterId,
+    artifactId: artifact.artifactId,
+    claimType: "original",
+    payerName: "Sample Payer Insurance",
+    memberId: "M123456",
+  };
+
+  await assert.rejects(() => repo.createClaim({ ...validInput, encounterId: "E999" }), NotionRepositoryError);
+  await assert.rejects(() => repo.createClaim({ ...validInput, artifactId: "A999" }), NotionRepositoryError);
+  await assert.rejects(
+    () => repo.createClaim({ ...validInput, claimType: "corrected", parentClaimId: "CL999" }),
+    NotionRepositoryError,
+  );
+});
+
+test("createClaim rejects an unknown claimType", async () => {
+  const repo = makeRepository();
+  const { encounter, artifact } = await makeEncounterWithClaimArtifact(repo);
+
+  await assert.rejects(
+    () =>
+      repo.createClaim({
+        encounterId: encounter.encounterId,
+        artifactId: artifact.artifactId,
+        claimType: "resubmission",
+        payerName: "Sample Payer Insurance",
+        memberId: "M123456",
+      }),
+    NotionRepositoryError,
+  );
+});
+
+test("updateClaimStatus moves a claim to submitted and stamps submittedAt", async () => {
+  const repo = makeRepository();
+  const { encounter, artifact } = await makeEncounterWithClaimArtifact(repo);
+  const claim = await repo.createClaim({
+    encounterId: encounter.encounterId,
+    artifactId: artifact.artifactId,
+    claimType: "original",
+    payerName: "Sample Payer Insurance",
+    memberId: "M123456",
+  });
+
+  assert.equal(claim.submittedAt, null);
+  const submitted = await repo.updateClaimStatus(claim.claimId, "submitted");
+  assert.equal(submitted.status, "submitted");
+  assert.ok(submitted.submittedAt);
+});
+
+test("updateClaimStatus rejects an unknown status", async () => {
+  const repo = makeRepository();
+  const { encounter, artifact } = await makeEncounterWithClaimArtifact(repo);
+  const claim = await repo.createClaim({
+    encounterId: encounter.encounterId,
+    artifactId: artifact.artifactId,
+    claimType: "original",
+    payerName: "Sample Payer Insurance",
+    memberId: "M123456",
+  });
+
+  await assert.rejects(() => repo.updateClaimStatus(claim.claimId, "voided"), NotionRepositoryError);
+});
+
+test("getClaimChain returns the original plus a corrected claim pointing at it, oldest first", async () => {
+  // Build-order step 3's own verification: create an original claim, then
+  // a corrected claim pointing at it.
+  const repo = makeRepository();
+  const { encounter, artifact } = await makeEncounterWithClaimArtifact(repo);
+
+  const original = await repo.createClaim({
+    encounterId: encounter.encounterId,
+    artifactId: artifact.artifactId,
+    claimType: "original",
+    payerName: "Sample Payer Insurance",
+    memberId: "M123456",
+  });
+  await repo.updateClaimStatus(original.claimId, "denied");
+
+  const corrected = await repo.createClaim({
+    encounterId: encounter.encounterId,
+    artifactId: artifact.artifactId,
+    claimType: "corrected",
+    parentClaimId: original.claimId,
+    payerName: "Sample Payer Insurance",
+    memberId: "M123456",
+  });
+
+  const chainFromOriginal = await repo.getClaimChain(original.claimId);
+  const chainFromCorrected = await repo.getClaimChain(corrected.claimId);
+
+  for (const chain of [chainFromOriginal, chainFromCorrected]) {
+    assert.equal(chain.length, 2);
+    assert.equal(chain[0].claimId, original.claimId);
+    assert.equal(chain[0].parentClaimId, null);
+    assert.equal(chain[1].claimId, corrected.claimId);
+    assert.equal(chain[1].parentClaimId, original.claimId);
+  }
+});
+
+test("getClaimChain includes a secondary claim as a sibling of a corrected claim", async () => {
+  const repo = makeRepository();
+  const { encounter, artifact } = await makeEncounterWithClaimArtifact(repo);
+
+  const original = await repo.createClaim({
+    encounterId: encounter.encounterId,
+    artifactId: artifact.artifactId,
+    claimType: "original",
+    payerName: "Primary Payer",
+    memberId: "M123456",
+  });
+  const corrected = await repo.createClaim({
+    encounterId: encounter.encounterId,
+    artifactId: artifact.artifactId,
+    claimType: "corrected",
+    parentClaimId: original.claimId,
+    payerName: "Primary Payer",
+    memberId: "M123456",
+  });
+  const secondary = await repo.createClaim({
+    encounterId: encounter.encounterId,
+    artifactId: artifact.artifactId,
+    claimType: "secondary",
+    parentClaimId: original.claimId,
+    payerName: "Secondary Payer",
+    memberId: "M654321",
+  });
+
+  const chain = await repo.getClaimChain(secondary.claimId);
+  assert.deepEqual(
+    chain.map((c) => c.claimId),
+    [original.claimId, corrected.claimId, secondary.claimId],
+  );
+});
+
+test("getClaimChain rejects a claimId that doesn't exist", async () => {
+  const repo = makeRepository();
+  await assert.rejects(() => repo.getClaimChain("CL999"), NotionRepositoryError);
 });
