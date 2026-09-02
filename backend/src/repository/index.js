@@ -5,9 +5,11 @@
 
 import { Client } from "@notionhq/client";
 import { NotionRepository } from "./NotionRepository.js";
+import { LocalDiskBlobStore } from "./LocalDiskBlobStore.js";
 
 export { Repository, BlobStore, NotImplementedError } from "./Repository.js";
 export { NotionRepository, NotionRepositoryError } from "./NotionRepository.js";
+export { LocalDiskBlobStore, BlobStoreError } from "./LocalDiskBlobStore.js";
 
 /** Builds a NotionRepository from the standard backend/.env variables. */
 export function createNotionRepositoryFromEnv(env = process.env) {
@@ -17,6 +19,7 @@ export function createNotionRepositoryFromEnv(env = process.env) {
   const encountersDataSourceId = env.NOTION_ENCOUNTERS_DATA_SOURCE_ID;
   const artifactsDataSourceId = env.NOTION_ARTIFACTS_DATA_SOURCE_ID;
   const claimsDataSourceId = env.NOTION_CLAIMS_DATA_SOURCE_ID;
+  const documentsDataSourceId = env.NOTION_DOCUMENTS_DATA_SOURCE_ID;
 
   const missing = [
     !apiKey && "NOTION_API_KEY",
@@ -25,6 +28,7 @@ export function createNotionRepositoryFromEnv(env = process.env) {
     !encountersDataSourceId && "NOTION_ENCOUNTERS_DATA_SOURCE_ID",
     !artifactsDataSourceId && "NOTION_ARTIFACTS_DATA_SOURCE_ID",
     !claimsDataSourceId && "NOTION_CLAIMS_DATA_SOURCE_ID",
+    !documentsDataSourceId && "NOTION_DOCUMENTS_DATA_SOURCE_ID",
   ].filter(Boolean);
   if (missing.length > 0) {
     throw new Error(`Missing Notion repository config: ${missing.join(", ")}. Set these in backend/.env.`);
@@ -37,5 +41,11 @@ export function createNotionRepositoryFromEnv(env = process.env) {
     encountersDataSourceId,
     artifactsDataSourceId,
     claimsDataSourceId,
+    documentsDataSourceId,
   });
+}
+
+/** Builds the demo BlobStore. Swap for an Aptible-backed one in production. */
+export function createBlobStoreFromEnv(env = process.env) {
+  return new LocalDiskBlobStore(env.BLOB_STORE_DIR ? { baseDir: env.BLOB_STORE_DIR } : {});
 }

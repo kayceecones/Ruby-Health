@@ -8,7 +8,14 @@ import { NotionRepository, NotionRepositoryError } from "../src/repository/Notio
 // NotionRepository's logic without a network call or a real integration
 // token. One store per data source, one title property each.
 function fakeNotionClient() {
-  const stores = { patients: new Map(), cases: new Map(), encounters: new Map(), artifacts: new Map(), claims: new Map() };
+  const stores = {
+    patients: new Map(),
+    cases: new Map(),
+    encounters: new Map(),
+    artifacts: new Map(),
+    claims: new Map(),
+    documents: new Map(),
+  };
   let nextPageId = 1;
 
   function storeFor(dataSourceId) {
@@ -17,6 +24,7 @@ function fakeNotionClient() {
     if (dataSourceId === "ds_encounters") return stores.encounters;
     if (dataSourceId === "ds_artifacts") return stores.artifacts;
     if (dataSourceId === "ds_claims") return stores.claims;
+    if (dataSourceId === "ds_documents") return stores.documents;
     throw new Error(`fakeNotionClient: unknown data source '${dataSourceId}'`);
   }
 
@@ -98,6 +106,7 @@ function makeRepository() {
     encountersDataSourceId: "ds_encounters",
     artifactsDataSourceId: "ds_artifacts",
     claimsDataSourceId: "ds_claims",
+    documentsDataSourceId: "ds_documents",
   });
 }
 
@@ -519,4 +528,71 @@ test("getClaimChain includes a secondary claim as a sibling of a corrected claim
 test("getClaimChain rejects a claimId that doesn't exist", async () => {
   const repo = makeRepository();
   await assert.rejects(() => repo.getClaimChain("CL999"), NotionRepositoryError);
+});
+
+test("createDocument works with and without a caseId, defaults extractionStatus to none", async () => {
+  const repo = makeRepository();
+  const { patient, case: c } = await makeCase(repo);
+
+  const caseSpecific = await repo.createDocument({
+    patientId: patient.patientId,
+    caseId: c.caseId,
+    source: "upload",
+    documentDate: "2026-08-15",
+    storageRef: "documents/D001/original.pdf",
+  });
+  const patientLevel = await repo.createDocument({
+    patientId: patient.patientId,
+    source: "fax",
+    documentDate: "2026-08-16",
+    storageRef: "documents/D002/original.pdf",
+  });
+
+  assert.equal(caseSpecific.documentId, "D001");
+  assert.equal(caseSpecific.caseId, c.caseId);
+  assert.equal(caseSpecific.extractionStatus, "none");
+
+  assert.equal(patientLevel.documentId, "D002");
+  assert.equal(patientLevel.caseId, null);
+});
+
+test("createDocument rejects an unknown patientId, caseId, or source", async () => {
+  const repo = makeRepository();
+  const { patient, case: c } = await makeCase(repo);
+  const validInput = {
+    patientId: patient.patientId,
+    source: "upload",
+    documentDate: "2026-08-15",
+    storageRef: "documents/D001/original.pdf",
+  };
+
+  await assert.rejects(() => repo.createDocument({ ...validInput, patientId: "P999" }), NotionRepositoryError);
+  await assert.rejects(() => repo.createDocument({ ...validInput, caseId: "C999" }), NotionRepositoryError);
+  await assert.rejects(() => repo.createDocument({ ...validInput, source: "email" }), NotionRepositoryError);
+});
+
+test("getDocument and listDocumentsForPatient read documents back", async () => {
+  const repo = makeRepository();
+  const { patient } = await makeCase(repo);
+  await repo.createDocument({
+    patientId: patient.patientId,
+    source: "upload",
+    documentDate: "2026-08-15",
+    storageRef: "documents/D001/original.pdf",
+  });
+  await repo.createDocument({
+    patientId: patient.patientId,
+    source: "ehr_sync",
+    documentDate: "2026-08-16",
+    storageRef: "documents/D002/original.pdf",
+  });
+
+  const documents = await repo.listDocumentsForPatient(patient.patientId);
+  assert.equal(documents.length, 2);
+
+  const first = await repo.getDocument("D001");
+  assert.equal(first.storageRef, "documents/D001/original.pdf");
+  assert.equal(first.source, "upload");
+
+  assert.equal(await repo.getDocument("D999"), null);
 });

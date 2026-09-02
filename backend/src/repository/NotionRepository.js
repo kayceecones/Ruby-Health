@@ -24,6 +24,7 @@ const STAGES = ["transcript", "facts", "codes", "claim"];
 const CREATED_BY_VALUES = ["system", "provider_edit"];
 const CLAIM_TYPES = ["original", "corrected", "secondary"];
 const CLAIM_STATUSES = ["draft", "submitted", "accepted", "denied", "pending"];
+const DOCUMENT_SOURCES = ["upload", "fax", "ehr_sync"];
 
 function titleText(page, property) {
   return page.properties[property]?.title?.[0]?.plain_text || "";
@@ -96,6 +97,19 @@ function parseEncounter(page) {
   };
 }
 
+function parseDocument(page) {
+  return {
+    documentId: titleText(page, "document_id"),
+    patientId: richText(page, "patient_id"),
+    caseId: richText(page, "case_id") || null,
+    source: selectValue(page, "source"),
+    documentDate: dateValue(page, "document_date"),
+    storageRef: richText(page, "storage_ref"),
+    extractionStatus: selectValue(page, "extraction_status"),
+    createdAt: page.properties.created_at?.created_time || page.created_time || null,
+  };
+}
+
 function parseClaim(page) {
   return {
     claimId: titleText(page, "claim_id"),
@@ -137,12 +151,21 @@ export class NotionRepository extends Repository {
    * @param {{ client: import("@notionhq/client").Client,
    *   patientsDataSourceId: string, casesDataSourceId: string,
    *   encountersDataSourceId?: string, artifactsDataSourceId?: string,
-   *   claimsDataSourceId?: string }} config
-   *   The encounter/artifact/claim IDs are optional for now so existing callers
-   *   built against just Patient/Case don't need to change -- methods that need
-   *   them throw a clear config error instead of a confusing undefined-ID query.
+   *   claimsDataSourceId?: string, documentsDataSourceId?: string }} config
+   *   The encounter/artifact/claim/document IDs are optional for now so existing
+   *   callers built against just Patient/Case don't need to change -- methods
+   *   that need them throw a clear config error instead of a confusing
+   *   undefined-ID query.
    */
-  constructor({ client, patientsDataSourceId, casesDataSourceId, encountersDataSourceId, artifactsDataSourceId, claimsDataSourceId }) {
+  constructor({
+    client,
+    patientsDataSourceId,
+    casesDataSourceId,
+    encountersDataSourceId,
+    artifactsDataSourceId,
+    claimsDataSourceId,
+    documentsDataSourceId,
+  }) {
     super();
     if (!client) throw new NotionRepositoryError("NotionRepository requires a Notion client.");
     if (!patientsDataSourceId) throw new NotionRepositoryError("NotionRepository requires patientsDataSourceId.");
@@ -153,6 +176,7 @@ export class NotionRepository extends Repository {
     this.encountersDataSourceId = encountersDataSourceId;
     this.artifactsDataSourceId = artifactsDataSourceId;
     this.claimsDataSourceId = claimsDataSourceId;
+    this.documentsDataSourceId = documentsDataSourceId;
   }
 
   _requireEncountersDataSource() {
@@ -170,6 +194,12 @@ export class NotionRepository extends Repository {
   _requireClaimsDataSource() {
     if (!this.claimsDataSourceId) {
       throw new NotionRepositoryError("NotionRepository was not configured with claimsDataSourceId.");
+    }
+  }
+
+  _requireDocumentsDataSource() {
+    if (!this.documentsDataSourceId) {
+      throw new NotionRepositoryError("NotionRepository was not configured with documentsDataSourceId.");
     }
   }
 
@@ -445,6 +475,52 @@ export class NotionRepository extends Repository {
       }
     }
     return chain.sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+  }
+
+  async createDocument({ patientId, caseId, source, documentDate, storageRef }) {
+    this._requireDocumentsDataSource();
+    if (!DOCUMENT_SOURCES.includes(source)) {
+      throw new NotionRepositoryError(`createDocument source must be one of: ${DOCUMENT_SOURCES.join(", ")}.`);
+    }
+    if (!documentDate) throw new NotionRepositoryError("createDocument requires a documentDate.");
+    if (!storageRef) throw new NotionRepositoryError("createDocument requires a storageRef.");
+
+    const patient = await this.getPatient(patientId);
+    if (!patient) throw new NotionRepositoryError(`No patient found with patient_id '${patientId}'.`);
+    if (caseId) {
+      const documentCase = await this.getCase(caseId);
+      if (!documentCase) throw new NotionRepositoryError(`No case found with case_id '${caseId}'.`);
+    }
+
+    const documentId = await this._nextSequentialId(this.documentsDataSourceId, "document_id", "D");
+    const page = await this.client.pages.create({
+      parent: { data_source_id: this.documentsDataSourceId },
+      properties: {
+        document_id: { title: [{ text: { content: documentId } }] },
+        patient_id: { rich_text: [{ text: { content: patientId } }] },
+        case_id: { rich_text: [{ text: { content: caseId || "" } }] },
+        source: { select: { name: source } },
+        document_date: { date: { start: documentDate } },
+        storage_ref: { rich_text: [{ text: { content: storageRef } }] },
+        extraction_status: { select: { name: "none" } },
+      },
+    });
+    return parseDocument(page);
+  }
+
+  async getDocument(documentId) {
+    this._requireDocumentsDataSource();
+    const page = await this._findByTitle(this.documentsDataSourceId, "document_id", documentId);
+    return page ? parseDocument(page) : null;
+  }
+
+  async listDocumentsForPatient(patientId) {
+    this._requireDocumentsDataSource();
+    const pages = await this._queryAll(this.documentsDataSourceId, {
+      property: "patient_id",
+      rich_text: { equals: patientId },
+    });
+    return pages.map(parseDocument);
   }
 
   async _findByTitle(dataSourceId, titleProperty, value) {
