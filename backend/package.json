@@ -9,7 +9,8 @@
     "test": "node --test test/*.test.js",
     "seed:provider": "node scripts/seed-provider-profile.js",
     "smoke:stedi": "node scripts/smoke-stedi.js",
-    "smoke:notion": "node scripts/smoke-notion.js"
+    "smoke:notion": "node scripts/smoke-notion.js",
+    "smoke:notion-artifacts": "node scripts/smoke-notion-artifacts.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

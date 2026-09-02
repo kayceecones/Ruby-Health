@@ -20,6 +20,9 @@ export class NotionRepositoryError extends Error {
   }
 }
 
+const STAGES = ["transcript", "facts", "codes", "claim"];
+const CREATED_BY_VALUES = ["system", "provider_edit"];
+
 function titleText(page, property) {
   return page.properties[property]?.title?.[0]?.plain_text || "";
 }
@@ -28,12 +31,36 @@ function richText(page, property) {
   return page.properties[property]?.rich_text?.[0]?.plain_text || "";
 }
 
+// Notion caps each rich_text item at 2000 characters. Artifact content is
+// arbitrary pipeline-stage JSON and can easily exceed that, so it's written
+// and read as a concatenation of chunks rather than a single item.
+function richTextAll(page, property) {
+  return (page.properties[property]?.rich_text || []).map((item) => item.plain_text).join("");
+}
+
+const RICH_TEXT_CHUNK_SIZE = 2000;
+
+function chunkedRichText(text) {
+  const chunks = [];
+  for (let i = 0; i < text.length; i += RICH_TEXT_CHUNK_SIZE) {
+    chunks.push({ text: { content: text.slice(i, i + RICH_TEXT_CHUNK_SIZE) } });
+  }
+  // Notion rejects an empty rich_text array -- an empty string still needs
+  // one (empty) chunk to round-trip as "" rather than being omitted.
+  return chunks.length > 0 ? chunks : [{ text: { content: "" } }];
+}
+
 function dateValue(page, property) {
   return page.properties[property]?.date?.start || null;
 }
 
 function selectValue(page, property) {
   return page.properties[property]?.select?.name || null;
+}
+
+function numberValue(page, property) {
+  const value = page.properties[property]?.number;
+  return typeof value === "number" ? value : null;
 }
 
 function parsePatient(page) {
@@ -56,12 +83,48 @@ function parseCase(page) {
   };
 }
 
+function parseEncounter(page) {
+  return {
+    encounterId: titleText(page, "encounter_id"),
+    caseId: richText(page, "case_id"),
+    patientId: richText(page, "patient_id"),
+    occurredAt: dateValue(page, "occurred_at"),
+    status: selectValue(page, "status"),
+    createdAt: page.properties.created_at?.created_time || page.created_time || null,
+  };
+}
+
+function parseArtifact(page) {
+  const raw = richTextAll(page, "content");
+  let content = null;
+  try {
+    content = raw ? JSON.parse(raw) : null;
+  } catch {
+    // Should never happen -- createArtifact always writes JSON.stringify
+    // output. Surfacing the raw text beats throwing on read.
+    content = raw;
+  }
+  return {
+    artifactId: titleText(page, "artifact_id"),
+    encounterId: richText(page, "encounter_id"),
+    stage: selectValue(page, "stage"),
+    version: numberValue(page, "version"),
+    content,
+    createdBy: selectValue(page, "created_by"),
+    createdAt: page.properties.created_at?.created_time || page.created_time || null,
+  };
+}
+
 export class NotionRepository extends Repository {
   /**
    * @param {{ client: import("@notionhq/client").Client,
-   *   patientsDataSourceId: string, casesDataSourceId: string }} config
+   *   patientsDataSourceId: string, casesDataSourceId: string,
+   *   encountersDataSourceId?: string, artifactsDataSourceId?: string }} config
+   *   The encounter/artifact IDs are optional for now so existing callers built
+   *   against just Patient/Case don't need to change -- methods that need them
+   *   throw a clear config error instead of a confusing undefined-ID query.
    */
-  constructor({ client, patientsDataSourceId, casesDataSourceId }) {
+  constructor({ client, patientsDataSourceId, casesDataSourceId, encountersDataSourceId, artifactsDataSourceId }) {
     super();
     if (!client) throw new NotionRepositoryError("NotionRepository requires a Notion client.");
     if (!patientsDataSourceId) throw new NotionRepositoryError("NotionRepository requires patientsDataSourceId.");
@@ -69,6 +132,20 @@ export class NotionRepository extends Repository {
     this.client = client;
     this.patientsDataSourceId = patientsDataSourceId;
     this.casesDataSourceId = casesDataSourceId;
+    this.encountersDataSourceId = encountersDataSourceId;
+    this.artifactsDataSourceId = artifactsDataSourceId;
+  }
+
+  _requireEncountersDataSource() {
+    if (!this.encountersDataSourceId) {
+      throw new NotionRepositoryError("NotionRepository was not configured with encountersDataSourceId.");
+    }
+  }
+
+  _requireArtifactsDataSource() {
+    if (!this.artifactsDataSourceId) {
+      throw new NotionRepositoryError("NotionRepository was not configured with artifactsDataSourceId.");
+    }
   }
 
   async createPatient({ name, dateOfBirth }) {
@@ -145,6 +222,113 @@ export class NotionRepository extends Repository {
       },
     });
     return parseCase(updated);
+  }
+
+  async createEncounter({ caseId, occurredAt }) {
+    this._requireEncountersDataSource();
+    if (!caseId) throw new NotionRepositoryError("createEncounter requires a caseId.");
+    if (!occurredAt) throw new NotionRepositoryError("createEncounter requires an occurredAt.");
+
+    const encounterCase = await this.getCase(caseId);
+    if (!encounterCase) throw new NotionRepositoryError(`No case found with case_id '${caseId}'.`);
+
+    const encounterId = await this._nextSequentialId(this.encountersDataSourceId, "encounter_id", "E");
+    const page = await this.client.pages.create({
+      parent: { data_source_id: this.encountersDataSourceId },
+      properties: {
+        encounter_id: { title: [{ text: { content: encounterId } }] },
+        case_id: { rich_text: [{ text: { content: caseId } }] },
+        patient_id: { rich_text: [{ text: { content: encounterCase.patientId } }] },
+        occurred_at: { date: { start: occurredAt } },
+        status: { select: { name: "draft" } },
+      },
+    });
+    return parseEncounter(page);
+  }
+
+  async getEncounter(encounterId) {
+    this._requireEncountersDataSource();
+    const page = await this._findByTitle(this.encountersDataSourceId, "encounter_id", encounterId);
+    return page ? parseEncounter(page) : null;
+  }
+
+  async listEncountersForCase(caseId) {
+    this._requireEncountersDataSource();
+    const pages = await this._queryAll(this.encountersDataSourceId, {
+      property: "case_id",
+      rich_text: { equals: caseId },
+    });
+    return pages.map(parseEncounter).sort((a, b) => (a.occurredAt || "").localeCompare(b.occurredAt || ""));
+  }
+
+  async updateEncounterStatus(encounterId, status) {
+    this._requireEncountersDataSource();
+    const page = await this._findByTitle(this.encountersDataSourceId, "encounter_id", encounterId);
+    if (!page) throw new NotionRepositoryError(`No encounter found with encounter_id '${encounterId}'.`);
+
+    const updated = await this.client.pages.update({
+      page_id: page.id,
+      properties: { status: { select: { name: status } } },
+    });
+    return parseEncounter(updated);
+  }
+
+  async createArtifact({ encounterId, stage, content, createdBy }) {
+    this._requireArtifactsDataSource();
+    if (!encounterId) throw new NotionRepositoryError("createArtifact requires an encounterId.");
+    if (!STAGES.includes(stage)) throw new NotionRepositoryError(`createArtifact stage must be one of: ${STAGES.join(", ")}.`);
+    if (!CREATED_BY_VALUES.includes(createdBy)) {
+      throw new NotionRepositoryError(`createArtifact createdBy must be one of: ${CREATED_BY_VALUES.join(", ")}.`);
+    }
+
+    const encounter = await this.getEncounter(encounterId);
+    if (!encounter) throw new NotionRepositoryError(`No encounter found with encounter_id '${encounterId}'.`);
+
+    const priorVersions = await this._queryAll(this.artifactsDataSourceId, {
+      and: [
+        { property: "encounter_id", rich_text: { equals: encounterId } },
+        { property: "stage", select: { equals: stage } },
+      ],
+    });
+    const version = priorVersions.reduce((max, page) => Math.max(max, numberValue(page, "version") || 0), 0) + 1;
+
+    const artifactId = await this._nextSequentialId(this.artifactsDataSourceId, "artifact_id", "A");
+    const page = await this.client.pages.create({
+      parent: { data_source_id: this.artifactsDataSourceId },
+      properties: {
+        artifact_id: { title: [{ text: { content: artifactId } }] },
+        encounter_id: { rich_text: [{ text: { content: encounterId } }] },
+        stage: { select: { name: stage } },
+        version: { number: version },
+        content: { rich_text: chunkedRichText(JSON.stringify(content)) },
+        created_by: { select: { name: createdBy } },
+      },
+    });
+    return parseArtifact(page);
+  }
+
+  async getArtifactHistory(encounterId) {
+    this._requireArtifactsDataSource();
+    const pages = await this._queryAll(this.artifactsDataSourceId, {
+      property: "encounter_id",
+      rich_text: { equals: encounterId },
+    });
+    return pages
+      .map(parseArtifact)
+      .sort((a, b) => STAGES.indexOf(a.stage) - STAGES.indexOf(b.stage) || b.version - a.version);
+  }
+
+  async getLatestArtifact(encounterId, stage) {
+    this._requireArtifactsDataSource();
+    const pages = await this._queryAll(this.artifactsDataSourceId, {
+      and: [
+        { property: "encounter_id", rich_text: { equals: encounterId } },
+        { property: "stage", select: { equals: stage } },
+      ],
+    });
+    if (pages.length === 0) return null;
+    const artifacts = pages.map(parseArtifact);
+    return artifacts.reduce((latest, artifact) => (artifact.version > latest.version ? artifact : latest));
   }
 
   async _findByTitle(dataSourceId, titleProperty, value) {

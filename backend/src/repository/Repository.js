@@ -67,7 +67,10 @@ export class Repository {
 
   // --- Encounter -----------------------------------------------------------
 
-  /** @param {{ caseId: string, patientId: string, occurredAt: string }} input
+  /** @param {{ caseId: string, occurredAt: string }} input -- patientId is
+   *  not accepted here even though Encounter carries it denormalized; it's
+   *  looked up from the case instead of trusted from the caller, so the two
+   *  can't drift apart.
    *  @returns {Promise<object>} the created Encounter, status "draft" */
   async createEncounter(_input) {
     throw new NotImplementedError("createEncounter");
