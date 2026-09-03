@@ -88,6 +88,29 @@
     .nav-item.active.has-data .nav-dot { background: var(--cream); border-color: var(--cream); }
 
 
+    /* ---- Intake screen: patient + case selection, shown before the claim flow ---- */
+    #intakeScreen { display: none; flex: 1; min-width: 0; flex-direction: column; padding: 32px 44px; max-width: 560px; }
+    #appShell.pre-intake #intakeScreen { display: flex; }
+    #appShell.pre-intake #sidebar, #appShell.pre-intake #main { display: none; }
+
+    .intake-section { margin-bottom: 24px; }
+    .intake-label { font-size: 11px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+    .intake-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+    .intake-option {
+      display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 14px; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--card); text-align: left; font-size: 13px;
+    }
+    .intake-option:hover { background: var(--border-soft); }
+    .intake-option.selected { border-color: var(--ruby); background: rgba(219, 42, 51, 0.06); }
+    .intake-option .intake-option-title { font-weight: 700; color: var(--ink); }
+    .intake-option .intake-option-meta { color: var(--ink-2); font-size: 11.5px; }
+    .intake-empty { color: var(--ink-2); font-size: 12.5px; margin-bottom: 10px; }
+    .intake-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .intake-form input {
+      font: inherit; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--ink);
+    }
+    #startClaimBtn { align-self: flex-start; margin-top: 8px; }
+
     /* ---- Main content ---- */
     #main { flex: 1; min-width: 0; padding: 32px 44px; max-width: 900px; }
     .panel { display: none; }
@@ -335,7 +358,39 @@
       </button>
     </div>
 
-    <div id="appShell" class="route">
+    <div id="appShell" class="route pre-intake">
+    <div id="intakeScreen">
+      <div class="panel-title">Start a claim</div>
+      <div class="panel-subtitle">Pick the patient and case this encounter belongs to. Everything after this is unchanged.</div>
+
+      <div class="intake-section" id="patientStep">
+        <div class="intake-label">Patient</div>
+        <input id="patientSearchInput" type="text" placeholder="Search patients by name..." />
+        <div id="patientList" class="intake-list" style="margin-top:10px;"></div>
+        <div id="patientEmpty" class="intake-empty" style="display:none;">No matching patients.</div>
+        <button id="newPatientToggleBtn" class="btn" type="button">+ New patient</button>
+        <div id="newPatientForm" class="intake-form" style="display:none;">
+          <input id="newPatientName" type="text" placeholder="Full name" />
+          <input id="newPatientDob" type="date" placeholder="Date of birth" />
+          <button id="createPatientBtn" class="btn btn-primary" type="button" style="align-self:flex-start;">Create patient</button>
+        </div>
+      </div>
+
+      <div class="intake-section" id="caseStep" style="display:none;">
+        <div class="intake-label">Case</div>
+        <div id="caseList" class="intake-list"></div>
+        <div id="caseEmpty" class="intake-empty" style="display:none;">No open cases for this patient yet.</div>
+        <button id="newCaseToggleBtn" class="btn" type="button">+ New case</button>
+        <div id="newCaseForm" class="intake-form" style="display:none;">
+          <input id="newCaseTitle" type="text" placeholder="Case title, e.g. Annual physical" />
+          <button id="createCaseBtn" class="btn btn-primary" type="button" style="align-self:flex-start;">Create case</button>
+        </div>
+      </div>
+
+      <div id="intakeStatus" class="status"></div>
+      <button id="startClaimBtn" class="btn btn-primary" type="button" disabled>Start →</button>
+    </div>
+
     <div id="sidebar">
       <div id="logoRow">
         <div id="logoMark">RH</div>
@@ -493,6 +548,14 @@
     }
 
     const state = {
+      // Set once the intake screen's "Start" is clicked; drives whether the
+      // intake screen or the claim flow is shown, and tags every persisted
+      // artifact with the encounter it belongs to.
+      patientId: null,
+      patientName: "",
+      caseId: null,
+      caseTitle: "",
+      encounterId: null,
       transcript: "",
       transcriptSummary: "",
       facts: { chiefComplaint: "", symptoms: [], diagnosesDiscussed: [], proceduresPerformed: [], medicalNecessityLanguage: [] },
@@ -713,7 +776,7 @@
         const res = await fetch("/api/extract", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcript }),
+          body: JSON.stringify({ transcript, encounterId: state.encounterId }),
         });
         const data = await res.json();
 
@@ -1263,7 +1326,7 @@
         const res = await fetch("/api/suggest-codes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ facts: state.facts }),
+          body: JSON.stringify({ facts: state.facts, encounterId: state.encounterId }),
         });
         const data = await res.json();
 
@@ -1368,7 +1431,7 @@
         const res = await fetch("/api/populate-claim", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ facts: state.facts, codes: state.codes }),
+          body: JSON.stringify({ facts: state.facts, codes: state.codes, encounterId: state.encounterId }),
         });
         const data = await res.json();
 
@@ -1637,6 +1700,249 @@
       claimFormEl.appendChild(linesFieldset);
     }
 
+    // ---- Intake: patient + case selection, gates the claim flow ----
+
+    const appShellEl = document.getElementById("appShell");
+    const patientSearchInput = document.getElementById("patientSearchInput");
+    const patientListEl = document.getElementById("patientList");
+    const patientEmptyEl = document.getElementById("patientEmpty");
+    const newPatientToggleBtn = document.getElementById("newPatientToggleBtn");
+    const newPatientFormEl = document.getElementById("newPatientForm");
+    const newPatientNameInput = document.getElementById("newPatientName");
+    const newPatientDobInput = document.getElementById("newPatientDob");
+    const createPatientBtn = document.getElementById("createPatientBtn");
+    const caseStepEl = document.getElementById("caseStep");
+    const caseListEl = document.getElementById("caseList");
+    const caseEmptyEl = document.getElementById("caseEmpty");
+    const newCaseToggleBtn = document.getElementById("newCaseToggleBtn");
+    const newCaseFormEl = document.getElementById("newCaseForm");
+    const newCaseTitleInput = document.getElementById("newCaseTitle");
+    const createCaseBtn = document.getElementById("createCaseBtn");
+    const intakeStatusEl = document.getElementById("intakeStatus");
+    const startClaimBtn = document.getElementById("startClaimBtn");
+
+    let allPatients = [];
+    let currentCases = [];
+
+    function setIntakeStatus(text, isError) {
+      intakeStatusEl.textContent = text || "";
+      intakeStatusEl.className = isError ? "status error" : "status";
+    }
+
+    function updateStartButton() {
+      startClaimBtn.disabled = !(state.patientId && state.caseId);
+    }
+
+    async function loadPatients() {
+      try {
+        const res = await fetch("/api/patients");
+        const data = await res.json();
+        if (!res.ok) {
+          setIntakeStatus(data.error || "Could not load patients.", true);
+          return;
+        }
+        allPatients = data.patients || [];
+        renderPatientList();
+      } catch (err) {
+        setIntakeStatus("Could not load patients: " + err.message, true);
+      }
+    }
+
+    function renderPatientList() {
+      const query = patientSearchInput.value.trim().toLowerCase();
+      const matches = query ? allPatients.filter((p) => p.name.toLowerCase().includes(query)) : allPatients;
+      patientListEl.innerHTML = "";
+      patientEmptyEl.style.display = matches.length ? "none" : "block";
+      matches.forEach((p) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "intake-option" + (state.patientId === p.patientId ? " selected" : "");
+        btn.innerHTML =
+          `<span class="intake-option-title">${escapeHtml(p.name)}</span>` +
+          `<span class="intake-option-meta">${escapeHtml(p.patientId)} · DOB ${escapeHtml(p.dateOfBirth || "")}</span>`;
+        btn.addEventListener("click", () => selectPatient(p));
+        patientListEl.appendChild(btn);
+      });
+    }
+
+    function selectPatient(patient) {
+      state.patientId = patient.patientId;
+      state.patientName = patient.name;
+      state.caseId = null;
+      state.caseTitle = "";
+      currentCases = [];
+      newPatientFormEl.style.display = "none";
+      renderPatientList();
+      caseStepEl.style.display = "block";
+      renderCaseList();
+      updateStartButton();
+      loadCases(patient.patientId);
+    }
+
+    async function loadCases(patientId) {
+      setIntakeStatus("");
+      try {
+        const res = await fetch(`/api/patients/${encodeURIComponent(patientId)}/cases`);
+        const data = await res.json();
+        if (!res.ok) {
+          setIntakeStatus(data.error || "Could not load cases.", true);
+          return;
+        }
+        currentCases = (data.cases || [])
+          .filter((c) => c.status === "open")
+          .sort((a, b) => (b.openedAt || "").localeCompare(a.openedAt || ""));
+        // Default to the most recently opened case so picking a patient with
+        // one active case is a single click, not two.
+        if (!state.caseId && currentCases.length) {
+          state.caseId = currentCases[0].caseId;
+          state.caseTitle = currentCases[0].title || "";
+        }
+        renderCaseList();
+        updateStartButton();
+      } catch (err) {
+        setIntakeStatus("Could not load cases: " + err.message, true);
+      }
+    }
+
+    function renderCaseList() {
+      caseListEl.innerHTML = "";
+      caseEmptyEl.style.display = currentCases.length ? "none" : "block";
+      currentCases.forEach((c) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "intake-option" + (state.caseId === c.caseId ? " selected" : "");
+        btn.innerHTML =
+          `<span class="intake-option-title">${escapeHtml(c.title || c.caseId)}</span>` +
+          `<span class="intake-option-meta">${escapeHtml(c.caseId)} · opened ${escapeHtml(c.openedAt || "")}</span>`;
+        btn.addEventListener("click", () => {
+          state.caseId = c.caseId;
+          state.caseTitle = c.title || "";
+          newCaseFormEl.style.display = "none";
+          renderCaseList();
+          updateStartButton();
+        });
+        caseListEl.appendChild(btn);
+      });
+    }
+
+    newPatientToggleBtn.addEventListener("click", () => {
+      newPatientFormEl.style.display = newPatientFormEl.style.display === "none" ? "flex" : "none";
+    });
+
+    createPatientBtn.addEventListener("click", async () => {
+      const name = newPatientNameInput.value.trim();
+      const dateOfBirth = newPatientDobInput.value;
+      if (!name || !dateOfBirth) {
+        setIntakeStatus("Enter a name and date of birth.", true);
+        return;
+      }
+
+      createPatientBtn.disabled = true;
+      setIntakeStatus("Creating patient...");
+      try {
+        const res = await fetch("/api/patients", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, dateOfBirth }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setIntakeStatus(data.error || "Could not create patient.", true);
+          return;
+        }
+        allPatients.push(data.patient);
+        newPatientNameInput.value = "";
+        newPatientDobInput.value = "";
+        setIntakeStatus("");
+        selectPatient(data.patient);
+      } catch (err) {
+        setIntakeStatus("Could not create patient: " + err.message, true);
+      } finally {
+        createPatientBtn.disabled = false;
+      }
+    });
+
+    newCaseToggleBtn.addEventListener("click", () => {
+      newCaseFormEl.style.display = newCaseFormEl.style.display === "none" ? "flex" : "none";
+    });
+
+    createCaseBtn.addEventListener("click", async () => {
+      const title = newCaseTitleInput.value.trim();
+      if (!state.patientId) {
+        setIntakeStatus("Select a patient first.", true);
+        return;
+      }
+      if (!title) {
+        setIntakeStatus("Enter a case title.", true);
+        return;
+      }
+
+      createCaseBtn.disabled = true;
+      setIntakeStatus("Creating case...");
+      try {
+        const res = await fetch("/api/cases", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ patientId: state.patientId, title }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setIntakeStatus(data.error || "Could not create case.", true);
+          return;
+        }
+        currentCases.unshift(data.case);
+        state.caseId = data.case.caseId;
+        state.caseTitle = data.case.title || "";
+        newCaseTitleInput.value = "";
+        newCaseFormEl.style.display = "none";
+        setIntakeStatus("");
+        renderCaseList();
+        updateStartButton();
+      } catch (err) {
+        setIntakeStatus("Could not create case: " + err.message, true);
+      } finally {
+        createCaseBtn.disabled = false;
+      }
+    });
+
+    patientSearchInput.addEventListener("input", renderPatientList);
+
+    startClaimBtn.addEventListener("click", async () => {
+      if (!state.patientId || !state.caseId) return;
+
+      startClaimBtn.disabled = true;
+      setIntakeStatus("Starting encounter...");
+      try {
+        const res = await fetch("/api/encounters", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ caseId: state.caseId }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setIntakeStatus(data.error || "Could not start encounter.", true);
+          startClaimBtn.disabled = false;
+          return;
+        }
+        state.encounterId = data.encounter.encounterId;
+        saveState();
+        appShellEl.classList.remove("pre-intake");
+      } catch (err) {
+        setIntakeStatus("Could not start encounter: " + err.message, true);
+        startClaimBtn.disabled = false;
+      }
+    });
+
+    function initIntake() {
+      // A restored session that already picked a patient/case this tab
+      // skips straight back to the claim flow instead of re-asking.
+      if (state.encounterId) {
+        appShellEl.classList.remove("pre-intake");
+        return;
+      }
+      loadPatients();
+    }
+
     // ---- init ----
 
     loadSavedState();
@@ -1646,6 +1952,7 @@
     renderCodes();
     renderClaimForm();
     applyReviewUiState();
+    initIntake();
     showTab("transcript");
     showRoute("new-claim");
   </script>
