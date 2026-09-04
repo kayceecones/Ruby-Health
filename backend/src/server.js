@@ -124,6 +124,46 @@ async function persistArtifact(encounterId, stage, content) {
   }
 }
 
+// A provider recording a visit shouldn't have to know who the patient is
+// before they can start talking -- extraction can run, and the encounter
+// still needs to land somewhere real. Every such encounter files under one
+// shared placeholder Patient, in its own Case titled from the chief
+// complaint, so it's a real findable record instead of being silently lost.
+const UNIDENTIFIED_PATIENT_NAME = "Unidentified Patient";
+const UNIDENTIFIED_PATIENT_DOB = "1900-01-01";
+let unidentifiedPatientCache = null;
+
+async function getOrCreateUnidentifiedPatient() {
+  if (unidentifiedPatientCache) return unidentifiedPatientCache;
+  const patients = await repository.listPatients();
+  const existing = patients.find((p) => p.name === UNIDENTIFIED_PATIENT_NAME);
+  unidentifiedPatientCache =
+    existing || (await repository.createPatient({ name: UNIDENTIFIED_PATIENT_NAME, dateOfBirth: UNIDENTIFIED_PATIENT_DOB }));
+  return unidentifiedPatientCache;
+}
+
+function deriveUnidentifiedCaseTitle(facts) {
+  const chiefComplaint = ((facts && facts.chiefComplaint) || "").trim();
+  return chiefComplaint ? `${chiefComplaint} - unidentified patient` : "Encounter - unidentified patient";
+}
+
+// Best-effort, same as persistArtifact: a provisioning hiccup shouldn't
+// block returning facts the extraction call already succeeded at.
+async function autoProvisionEncounter(facts) {
+  if (!repository) return null;
+  try {
+    const patient = await getOrCreateUnidentifiedPatient();
+    const title = deriveUnidentifiedCaseTitle(facts);
+    const createdCase = await repository.createCase({ patientId: patient.patientId, title });
+    const occurredAt = new Date().toISOString().slice(0, 10);
+    const encounter = await repository.createEncounter({ caseId: createdCase.caseId, occurredAt });
+    return { patient, case: createdCase, encounter };
+  } catch (err) {
+    console.error("Auto-provisioning an unidentified-patient encounter failed:", err);
+    return null;
+  }
+}
+
 app.get("/api/patients", async (_req, res) => {
   if (!requireRepository(res)) return;
   try {
@@ -224,10 +264,17 @@ app.post("/api/extract", async (req, res) => {
     // justification for care, so it is checked before a reviewer sees it.
     facts.medicalNecessityGrounding = verifyNecessityQuotes(facts, transcript);
 
-    await persistArtifact(encounterId, "transcript", { transcript });
-    await persistArtifact(encounterId, "facts", facts);
+    let effectiveEncounterId = encounterId;
+    let autoProvisioned = null;
+    if (!effectiveEncounterId) {
+      autoProvisioned = await autoProvisionEncounter(facts);
+      if (autoProvisioned) effectiveEncounterId = autoProvisioned.encounter.encounterId;
+    }
 
-    res.json({ facts });
+    await persistArtifact(effectiveEncounterId, "transcript", { transcript });
+    await persistArtifact(effectiveEncounterId, "facts", facts);
+
+    res.json({ facts, encounterId: effectiveEncounterId || null, autoProvisioned });
   } catch (err) {
     console.error("Extraction failed:", err);
     res.status(502).json({ error: "Extraction failed. See server logs for details." });

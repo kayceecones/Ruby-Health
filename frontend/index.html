@@ -89,9 +89,27 @@
 
 
     /* ---- Intake screen: patient + case selection, shown before the claim flow ---- */
-    #intakeScreen { display: none; flex: 1; min-width: 0; flex-direction: column; padding: 32px 44px; max-width: 560px; }
-    #appShell.pre-intake #intakeScreen { display: flex; }
-    #appShell.pre-intake #sidebar, #appShell.pre-intake #main { display: none; }
+    #intakeModal {
+      display: none; position: fixed; inset: 0; background: rgba(37, 28, 27, 0.45);
+      align-items: flex-start; justify-content: center; padding: 60px 20px; z-index: 100;
+    }
+    #intakeModal.open { display: flex; }
+    #intakeScreen {
+      background: var(--card); border-radius: 16px; box-shadow: var(--shadow-card); padding: 28px 32px;
+      width: 100%; max-width: 480px; max-height: 80vh; overflow-y: auto; position: relative;
+    }
+    #closeIntakeBtn {
+      position: absolute; top: 18px; right: 18px; border: none; background: none; color: var(--ink-2);
+      font-size: 18px; line-height: 1; cursor: pointer; padding: 4px;
+    }
+
+    /* ---- Patient/case indicator: always visible, opens the picker on demand ---- */
+    #patientCaseBar {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 10px 16px; margin-bottom: 22px; border-radius: 10px; background: var(--card); border: 1px solid var(--border);
+    }
+    #patientCaseLabel { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+    #patientCaseLabel.assigned { color: var(--ink); }
 
     .intake-section { margin-bottom: 24px; }
     .intake-label { font-size: 11px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
@@ -358,37 +376,40 @@
       </button>
     </div>
 
-    <div id="appShell" class="route pre-intake">
-    <div id="intakeScreen">
-      <div class="panel-title">Start a claim</div>
-      <div class="panel-subtitle">Pick the patient and case this encounter belongs to. Everything after this is unchanged.</div>
+    <div id="appShell" class="route">
+    <div id="intakeModal">
+      <div id="intakeScreen">
+        <button id="closeIntakeBtn" type="button" aria-label="Close">&times;</button>
+        <div class="panel-title">Patient &amp; case</div>
+        <div class="panel-subtitle">Attach this encounter to a patient and case. Optional -- an unattributed encounter still saves under an "unidentified patient" case you can find later.</div>
 
-      <div class="intake-section" id="patientStep">
-        <div class="intake-label">Patient</div>
-        <input id="patientSearchInput" type="text" placeholder="Search patients by name..." />
-        <div id="patientList" class="intake-list" style="margin-top:10px;"></div>
-        <div id="patientEmpty" class="intake-empty" style="display:none;">No matching patients.</div>
-        <button id="newPatientToggleBtn" class="btn" type="button">+ New patient</button>
-        <div id="newPatientForm" class="intake-form" style="display:none;">
-          <input id="newPatientName" type="text" placeholder="Full name" />
-          <input id="newPatientDob" type="date" placeholder="Date of birth" />
-          <button id="createPatientBtn" class="btn btn-primary" type="button" style="align-self:flex-start;">Create patient</button>
+        <div class="intake-section" id="patientStep">
+          <div class="intake-label">Patient</div>
+          <input id="patientSearchInput" type="text" placeholder="Search patients by name..." />
+          <div id="patientList" class="intake-list" style="margin-top:10px;"></div>
+          <div id="patientEmpty" class="intake-empty" style="display:none;">No matching patients.</div>
+          <button id="newPatientToggleBtn" class="btn" type="button">+ New patient</button>
+          <div id="newPatientForm" class="intake-form" style="display:none;">
+            <input id="newPatientName" type="text" placeholder="Full name" />
+            <input id="newPatientDob" type="date" placeholder="Date of birth" />
+            <button id="createPatientBtn" class="btn btn-primary" type="button" style="align-self:flex-start;">Create patient</button>
+          </div>
         </div>
-      </div>
 
-      <div class="intake-section" id="caseStep" style="display:none;">
-        <div class="intake-label">Case</div>
-        <div id="caseList" class="intake-list"></div>
-        <div id="caseEmpty" class="intake-empty" style="display:none;">No open cases for this patient yet.</div>
-        <button id="newCaseToggleBtn" class="btn" type="button">+ New case</button>
-        <div id="newCaseForm" class="intake-form" style="display:none;">
-          <input id="newCaseTitle" type="text" placeholder="Case title, e.g. Annual physical" />
-          <button id="createCaseBtn" class="btn btn-primary" type="button" style="align-self:flex-start;">Create case</button>
+        <div class="intake-section" id="caseStep" style="display:none;">
+          <div class="intake-label">Case</div>
+          <div id="caseList" class="intake-list"></div>
+          <div id="caseEmpty" class="intake-empty" style="display:none;">No open cases for this patient yet.</div>
+          <button id="newCaseToggleBtn" class="btn" type="button">+ New case</button>
+          <div id="newCaseForm" class="intake-form" style="display:none;">
+            <input id="newCaseTitle" type="text" placeholder="Case title, e.g. Annual physical" />
+            <button id="createCaseBtn" class="btn btn-primary" type="button" style="align-self:flex-start;">Create case</button>
+          </div>
         </div>
-      </div>
 
-      <div id="intakeStatus" class="status"></div>
-      <button id="startClaimBtn" class="btn btn-primary" type="button" disabled>Start →</button>
+        <div id="intakeStatus" class="status"></div>
+        <button id="startClaimBtn" class="btn btn-primary" type="button" disabled>Attach →</button>
+      </div>
     </div>
 
     <div id="sidebar">
@@ -423,6 +444,11 @@
     </div>
 
     <div id="main">
+      <div id="patientCaseBar">
+        <span id="patientCaseLabel">No patient selected -- will save under "unidentified patient" once you extract facts.</span>
+        <button id="openIntakeBtn" class="btn" type="button">Select patient / case</button>
+      </div>
+
       <div id="panelTranscript" class="panel">
         <div class="panel-title">Transcript</div>
         <div class="panel-subtitle">Paste a transcript, or use the mic below. Nothing here navigates you anywhere automatically.</div>
@@ -788,6 +814,22 @@
 
         state.facts = data.facts;
         renderFacts();
+
+        // No patient/case picked yet -- the server auto-filed this encounter
+        // under a shared "unidentified patient" case titled from the chief
+        // complaint. Reflect that in the indicator bar instead of leaving it
+        // looking unsaved.
+        if (data.encounterId && !state.encounterId) {
+          state.encounterId = data.encounterId;
+          if (data.autoProvisioned) {
+            state.patientId = data.autoProvisioned.patient.patientId;
+            state.patientName = data.autoProvisioned.patient.name;
+            state.caseId = data.autoProvisioned.case.caseId;
+            state.caseTitle = data.autoProvisioned.case.title;
+          }
+          updatePatientCaseBar();
+        }
+
         extractStatusEl.textContent = "Done — see the Facts tab.";
         extractStatusEl.className = "status";
         renderNav();
@@ -1700,9 +1742,16 @@
       claimFormEl.appendChild(linesFieldset);
     }
 
-    // ---- Intake: patient + case selection, gates the claim flow ----
+    // ---- Intake: patient + case selection, optional and on-demand ----
+    // Recording and the whole pipeline work with nothing selected. Extracting
+    // facts with no patient/case chosen auto-files the encounter under a
+    // shared "unidentified patient" case titled from the chief complaint --
+    // see the /api/extract handler -- so nothing typed is ever stuck unsaved.
 
-    const appShellEl = document.getElementById("appShell");
+    const intakeModalEl = document.getElementById("intakeModal");
+    const closeIntakeBtn = document.getElementById("closeIntakeBtn");
+    const openIntakeBtn = document.getElementById("openIntakeBtn");
+    const patientCaseLabelEl = document.getElementById("patientCaseLabel");
     const patientSearchInput = document.getElementById("patientSearchInput");
     const patientListEl = document.getElementById("patientList");
     const patientEmptyEl = document.getElementById("patientEmpty");
@@ -1732,6 +1781,31 @@
     function updateStartButton() {
       startClaimBtn.disabled = !(state.patientId && state.caseId);
     }
+
+    function updatePatientCaseBar() {
+      if (state.patientId && state.caseId) {
+        patientCaseLabelEl.textContent = `${state.patientName} · ${state.caseTitle || state.caseId}`;
+        patientCaseLabelEl.classList.add("assigned");
+      } else {
+        patientCaseLabelEl.textContent = 'No patient selected -- will save under "unidentified patient" once you extract facts.';
+        patientCaseLabelEl.classList.remove("assigned");
+      }
+    }
+
+    function openIntakeModal() {
+      intakeModalEl.classList.add("open");
+      if (!allPatients.length) loadPatients();
+    }
+
+    function closeIntakeModal() {
+      intakeModalEl.classList.remove("open");
+    }
+
+    openIntakeBtn.addEventListener("click", openIntakeModal);
+    closeIntakeBtn.addEventListener("click", closeIntakeModal);
+    intakeModalEl.addEventListener("click", (e) => {
+      if (e.target === intakeModalEl) closeIntakeModal();
+    });
 
     async function loadPatients() {
       try {
@@ -1926,7 +2000,8 @@
         }
         state.encounterId = data.encounter.encounterId;
         saveState();
-        appShellEl.classList.remove("pre-intake");
+        updatePatientCaseBar();
+        closeIntakeModal();
       } catch (err) {
         setIntakeStatus("Could not start encounter: " + err.message, true);
         startClaimBtn.disabled = false;
@@ -1934,12 +2009,7 @@
     });
 
     function initIntake() {
-      // A restored session that already picked a patient/case this tab
-      // skips straight back to the claim flow instead of re-asking.
-      if (state.encounterId) {
-        appShellEl.classList.remove("pre-intake");
-        return;
-      }
+      updatePatientCaseBar();
       loadPatients();
     }
 
