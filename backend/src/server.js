@@ -14,6 +14,7 @@ import { submitToStedi, StediSubmissionError } from "./pipeline/submitToStedi.js
 import { annotateValidation, unrecognisedCodes } from "./pipeline/validateCodes.js";
 import { usageTotals } from "./usage.js";
 import { loadCodeSet } from "../../reference/loadCodes.mjs";
+import { createNotionRepositoryFromEnv, NotionRepositoryError } from "./repository/index.js";
 import {
   getProviderProfile,
   upsertProviderProfile,
@@ -55,6 +56,17 @@ if (!getProviderProfile(DEFAULT_PROVIDER_ID)) {
   console.log(`Seeded demo provider profile for '${DEFAULT_PROVIDER_ID}' (none found on disk at boot).`);
 }
 
+// Notion-backed persistence -- optional at boot, same as the reference code
+// set. A fresh clone (or a deploy) with no NOTION_* env vars still runs the
+// claim pipeline exactly as before; only the New Claim intake screen and
+// encounter/artifact persistence are unavailable until it's configured.
+let repository = null;
+try {
+  repository = createNotionRepositoryFromEnv();
+} catch (err) {
+  console.warn("Notion repository not configured -- patient/case persistence disabled:", err.message);
+}
+
 // Loaded once at boot. Absent or empty is fine: validation reports "unchecked"
 // rather than failing, so a fresh clone with no reference files still runs.
 let codeIndex = null;
@@ -88,11 +100,152 @@ app.get("/api/health", (_req, res) => {
     codeValidation: codeIndex
       ? { enabled: true, codes: codeIndex.size, covers: [...codeIndex.coversTypes], blocking: false }
       : { enabled: false },
+    persistence: { enabled: Boolean(repository) },
   });
 });
 
+function requireRepository(res) {
+  if (repository) return true;
+  res.status(500).json({
+    error: "Notion repository is not configured on the server. Add NOTION_* vars to backend/.env and restart.",
+  });
+  return false;
+}
+
+// Best-effort: a persistence hiccup shouldn't take down a pipeline stage the
+// provider is actively watching. Logged, not surfaced, the same way code
+// validation warns instead of blocking.
+async function persistArtifact(encounterId, stage, content) {
+  if (!repository || !encounterId) return;
+  try {
+    await repository.createArtifact({ encounterId, stage, content, createdBy: "system" });
+  } catch (err) {
+    console.error(`Persisting '${stage}' artifact for encounter '${encounterId}' failed:`, err);
+  }
+}
+
+// A provider recording a visit shouldn't have to know who the patient is
+// before they can start talking -- extraction can run, and the encounter
+// still needs to land somewhere real. Every such encounter files under one
+// shared placeholder Patient, in its own Case titled from the chief
+// complaint, so it's a real findable record instead of being silently lost.
+const UNIDENTIFIED_PATIENT_NAME = "Unidentified Patient";
+const UNIDENTIFIED_PATIENT_DOB = "1900-01-01";
+let unidentifiedPatientCache = null;
+
+async function getOrCreateUnidentifiedPatient() {
+  if (unidentifiedPatientCache) return unidentifiedPatientCache;
+  const patients = await repository.listPatients();
+  const existing = patients.find((p) => p.name === UNIDENTIFIED_PATIENT_NAME);
+  unidentifiedPatientCache =
+    existing || (await repository.createPatient({ name: UNIDENTIFIED_PATIENT_NAME, dateOfBirth: UNIDENTIFIED_PATIENT_DOB }));
+  return unidentifiedPatientCache;
+}
+
+function deriveUnidentifiedCaseTitle(facts) {
+  const chiefComplaint = ((facts && facts.chiefComplaint) || "").trim();
+  return chiefComplaint ? `${chiefComplaint} - unidentified patient` : "Encounter - unidentified patient";
+}
+
+// Best-effort, same as persistArtifact: a provisioning hiccup shouldn't
+// block returning facts the extraction call already succeeded at.
+async function autoProvisionEncounter(facts) {
+  if (!repository) return null;
+  try {
+    const patient = await getOrCreateUnidentifiedPatient();
+    const title = deriveUnidentifiedCaseTitle(facts);
+    const createdCase = await repository.createCase({ patientId: patient.patientId, title });
+    const occurredAt = new Date().toISOString().slice(0, 10);
+    const encounter = await repository.createEncounter({ caseId: createdCase.caseId, occurredAt });
+    return { patient, case: createdCase, encounter };
+  } catch (err) {
+    console.error("Auto-provisioning an unidentified-patient encounter failed:", err);
+    return null;
+  }
+}
+
+app.get("/api/patients", async (_req, res) => {
+  if (!requireRepository(res)) return;
+  try {
+    const patients = await repository.listPatients();
+    res.json({ patients });
+  } catch (err) {
+    console.error("Listing patients failed:", err);
+    res.status(502).json({ error: "Listing patients failed. See server logs for details." });
+  }
+});
+
+app.post("/api/patients", async (req, res) => {
+  if (!requireRepository(res)) return;
+  const { name, dateOfBirth } = req.body || {};
+
+  if (!name || !dateOfBirth) {
+    return res.status(400).json({ error: "Request body must include 'name' and 'dateOfBirth'." });
+  }
+
+  try {
+    const patient = await repository.createPatient({ name, dateOfBirth });
+    res.json({ patient });
+  } catch (err) {
+    console.error("Creating patient failed:", err);
+    res.status(502).json({ error: "Creating patient failed. See server logs for details." });
+  }
+});
+
+app.get("/api/patients/:patientId/cases", async (req, res) => {
+  if (!requireRepository(res)) return;
+  try {
+    const cases = await repository.listCasesForPatient(req.params.patientId);
+    res.json({ cases });
+  } catch (err) {
+    console.error("Listing cases failed:", err);
+    res.status(502).json({ error: "Listing cases failed. See server logs for details." });
+  }
+});
+
+app.post("/api/cases", async (req, res) => {
+  if (!requireRepository(res)) return;
+  const { patientId, title } = req.body || {};
+
+  if (!patientId || !title) {
+    return res.status(400).json({ error: "Request body must include 'patientId' and 'title'." });
+  }
+
+  try {
+    const createdCase = await repository.createCase({ patientId, title });
+    res.json({ case: createdCase });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Creating case failed:", err);
+    res.status(502).json({ error: "Creating case failed. See server logs for details." });
+  }
+});
+
+app.post("/api/encounters", async (req, res) => {
+  if (!requireRepository(res)) return;
+  const { caseId } = req.body || {};
+
+  if (!caseId) {
+    return res.status(400).json({ error: "Request body must include 'caseId'." });
+  }
+
+  try {
+    const occurredAt = new Date().toISOString().slice(0, 10);
+    const encounter = await repository.createEncounter({ caseId, occurredAt });
+    res.json({ encounter });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Creating encounter failed:", err);
+    res.status(502).json({ error: "Creating encounter failed. See server logs for details." });
+  }
+});
+
 app.post("/api/extract", async (req, res) => {
-  const { transcript } = req.body || {};
+  const { transcript, encounterId } = req.body || {};
 
   if (typeof transcript !== "string" || transcript.trim().length === 0) {
     return res.status(400).json({ error: "Request body must include a non-empty 'transcript' string." });
@@ -111,7 +264,17 @@ app.post("/api/extract", async (req, res) => {
     // justification for care, so it is checked before a reviewer sees it.
     facts.medicalNecessityGrounding = verifyNecessityQuotes(facts, transcript);
 
-    res.json({ facts });
+    let effectiveEncounterId = encounterId;
+    let autoProvisioned = null;
+    if (!effectiveEncounterId) {
+      autoProvisioned = await autoProvisionEncounter(facts);
+      if (autoProvisioned) effectiveEncounterId = autoProvisioned.encounter.encounterId;
+    }
+
+    await persistArtifact(effectiveEncounterId, "transcript", { transcript });
+    await persistArtifact(effectiveEncounterId, "facts", facts);
+
+    res.json({ facts, encounterId: effectiveEncounterId || null, autoProvisioned });
   } catch (err) {
     console.error("Extraction failed:", err);
     res.status(502).json({ error: "Extraction failed. See server logs for details." });
@@ -141,7 +304,7 @@ app.post("/api/cleanup-transcript", async (req, res) => {
 });
 
 app.post("/api/suggest-codes", async (req, res) => {
-  const { facts } = req.body || {};
+  const { facts, encounterId } = req.body || {};
 
   if (!facts || typeof facts !== "object") {
     return res.status(400).json({ error: "Request body must include a 'facts' object (the extraction output)." });
@@ -162,6 +325,8 @@ app.post("/api/suggest-codes", async (req, res) => {
       console.log(JSON.stringify({ type: "validation", unrecognised }));
     }
 
+    await persistArtifact(encounterId, "codes", suggestions);
+
     res.json({ suggestions });
   } catch (err) {
     console.error("Code suggestion failed:", err);
@@ -169,8 +334,8 @@ app.post("/api/suggest-codes", async (req, res) => {
   }
 });
 
-app.post("/api/populate-claim", (req, res) => {
-  const { facts, codes, providerId } = req.body || {};
+app.post("/api/populate-claim", async (req, res) => {
+  const { facts, codes, providerId, encounterId } = req.body || {};
 
   if (!facts || typeof facts !== "object") {
     return res.status(400).json({ error: "Request body must include a 'facts' object (the extraction output)." });
@@ -182,6 +347,7 @@ app.post("/api/populate-claim", (req, res) => {
   try {
     const providerProfile = getProviderProfile(providerId || DEFAULT_PROVIDER_ID);
     const claim = populateClaim(facts, codes, providerProfile);
+    await persistArtifact(encounterId, "claim", claim);
     res.json({ claim });
   } catch (err) {
     if (err instanceof ClaimError) {
