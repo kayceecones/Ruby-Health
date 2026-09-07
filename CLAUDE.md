@@ -134,10 +134,15 @@ jargon with an explanation appended — the plain version should stand on its ow
 **One piece at a time.** Prefer a short response with a single clear next step
 over a complete rundown of everything at once. Long responses lose the thread.
 
-**Never `git push` (or merge a PR) without an explicit go-ahead for that specific
-push**, even to a feature branch, even when a change is finished and committed.
-Commit locally and say it's ready — wait for Kaycee to say "push" (or equivalent)
-before it leaves the machine.
+**Push finished commits to their feature branch as soon as they're ready** --
+don't leave them sitting local-only. This isn't optional busywork: Claude Code
+sessions run in ephemeral cloud containers, and a commit that's never pushed can
+be lost for good if the container gets recycled before anyone notices.
+
+**Never merge a PR into `master`, or push directly to `master`, without an
+explicit go-ahead for that specific merge/push.** Master auto-deploys to the
+live Render site on every commit, so that's the boundary that needs a human
+green light -- feature-branch pushes don't.
 
 ---
 
