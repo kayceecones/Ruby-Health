@@ -449,6 +449,15 @@ export class NotionRepository extends Repository {
     return parseClaim(updated);
   }
 
+  async listClaimsForEncounter(encounterId) {
+    this._requireClaimsDataSource();
+    const pages = await this._queryAll(this.claimsDataSourceId, {
+      property: "encounter_id",
+      rich_text: { equals: encounterId },
+    });
+    return pages.map(parseClaim).sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+  }
+
   // A "chain" is every claim connected to a given one via parent_claim_id --
   // corrections and secondary submissions off the same original claim, not
   // necessarily a single straight line. All claims in a chain attach to the
@@ -459,11 +468,8 @@ export class NotionRepository extends Repository {
     const claim = await this.getClaim(claimId);
     if (!claim) throw new NotionRepositoryError(`No claim found with claim_id '${claimId}'.`);
 
-    const encounterClaims = await this._queryAll(this.claimsDataSourceId, {
-      property: "encounter_id",
-      rich_text: { equals: claim.encounterId },
-    });
-    const claimsById = new Map(encounterClaims.map(parseClaim).map((c) => [c.claimId, c]));
+    const encounterClaims = await this.listClaimsForEncounter(claim.encounterId);
+    const claimsById = new Map(encounterClaims.map((c) => [c.claimId, c]));
 
     let root = claimsById.get(claimId);
     while (root.parentClaimId && claimsById.has(root.parentClaimId)) {

@@ -192,6 +192,74 @@ app.post("/api/patients", async (req, res) => {
   }
 });
 
+// The History activity view's data source: recent encounters and recently
+// submitted claims, newest first, across every patient. There's no single
+// Notion query for "everything recent" -- foreign keys are plain-text IDs,
+// not Notion relations (see NotionRepository.js), so this composes the
+// existing per-parent list methods instead of adding Notion-specific query
+// logic. Fine at demo volume; a Postgres repository would answer this with
+// one indexed query instead.
+app.get("/api/activity", async (req, res) => {
+  if (!requireRepository(res)) return;
+  const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+
+  try {
+    const patients = await repository.listPatients();
+    const patientsById = new Map(patients.map((p) => [p.patientId, p]));
+
+    const caseLists = await Promise.all(patients.map((p) => repository.listCasesForPatient(p.patientId)));
+    const cases = caseLists.flat();
+    const casesById = new Map(cases.map((c) => [c.caseId, c]));
+
+    const encounterLists = await Promise.all(cases.map((c) => repository.listEncountersForCase(c.caseId)));
+    const encounters = encounterLists.flat();
+    const encountersById = new Map(encounters.map((e) => [e.encounterId, e]));
+
+    // Claims require the claims data source to be configured, unlike
+    // patients/cases/encounters -- degrade to "no claim activity" rather
+    // than failing the whole feed when it isn't.
+    let claims = [];
+    try {
+      const claimLists = await Promise.all(encounters.map((e) => repository.listClaimsForEncounter(e.encounterId)));
+      claims = claimLists.flat();
+    } catch (err) {
+      if (!(err instanceof NotionRepositoryError)) throw err;
+    }
+
+    const encounterItems = encounters.map((e) => ({
+      type: "encounter",
+      id: e.encounterId,
+      status: e.status,
+      timestamp: e.createdAt || e.occurredAt,
+      patientName: patientsById.get(e.patientId)?.name || e.patientId,
+      caseTitle: casesById.get(e.caseId)?.title || e.caseId,
+    }));
+
+    const claimItems = claims.map((c) => {
+      const encounter = encountersById.get(c.encounterId);
+      const patient = encounter ? patientsById.get(encounter.patientId) : null;
+      return {
+        type: "claim",
+        id: c.claimId,
+        status: c.status,
+        timestamp: c.submittedAt || c.createdAt,
+        patientName: patient?.name || null,
+        payerName: c.payerName,
+      };
+    });
+
+    const activity = [...encounterItems, ...claimItems]
+      .filter((item) => item.timestamp)
+      .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""))
+      .slice(0, limit);
+
+    res.json({ activity });
+  } catch (err) {
+    console.error("Building activity feed failed:", err);
+    res.status(502).json({ error: "Building activity feed failed. See server logs for details." });
+  }
+});
+
 app.get("/api/patients/:patientId/cases", async (req, res) => {
   if (!requireRepository(res)) return;
   try {
@@ -391,8 +459,31 @@ app.post("/api/provider-profile", (req, res) => {
   }
 });
 
+// Best-effort, same as persistArtifact: recording that a claim was actually
+// submitted is what makes it show up in the History activity view, but a
+// failure here shouldn't turn a successful Stedi submission into an error
+// response. Requires the claim-stage artifact to already be persisted (it
+// is, by /api/populate-claim) since Claim rows point at it.
+async function persistSubmittedClaim(encounterId, claim) {
+  if (!repository || !encounterId) return;
+  try {
+    const artifact = await repository.getLatestArtifact(encounterId, "claim");
+    if (!artifact) return;
+    const created = await repository.createClaim({
+      encounterId,
+      artifactId: artifact.artifactId,
+      claimType: "original",
+      payerName: claim.payer?.name || "Unknown payer",
+      memberId: claim.patient?.memberId || "Unknown member",
+    });
+    await repository.updateClaimStatus(created.claimId, "submitted");
+  } catch (err) {
+    console.error(`Persisting submitted claim for encounter '${encounterId}' failed:`, err);
+  }
+}
+
 app.post("/api/submit-claim", async (req, res) => {
-  const { claim } = req.body || {};
+  const { claim, encounterId } = req.body || {};
 
   if (!claim || typeof claim !== "object") {
     return res.status(400).json({ error: "Request body must include a 'claim' object (the populated claim)." });
@@ -417,6 +508,7 @@ app.post("/api/submit-claim", async (req, res) => {
 
   try {
     const stediResponse = await submitToStedi(stediClaim, STEDI_API_KEY);
+    await persistSubmittedClaim(encounterId, claim);
     res.json({ stediClaim, stediResponse });
   } catch (err) {
     if (err instanceof StediSubmissionError) {

@@ -58,6 +58,28 @@
     #historyView.route.active { display: block; }
     #historyView { flex: 1; min-width: 0; padding: 32px 44px; max-width: 900px; }
     #historyEmpty { color: var(--ink-2); font-size: 13.5px; line-height: 1.6; }
+    .activity-row {
+      display: flex; align-items: center; gap: 14px; padding: 14px 16px;
+    }
+    .activity-row + .activity-row { border-top: 1px solid var(--border-soft); }
+    .activity-icon {
+      width: 30px; height: 30px; border-radius: 9px; flex: none; display: flex; align-items: center;
+      justify-content: center; color: var(--plum); background: rgba(255, 184, 200, 0.32);
+    }
+    .activity-row.claim .activity-icon { color: var(--garnet); background: rgba(184, 150, 90, 0.2); }
+    .activity-main { flex: 1; min-width: 0; }
+    .activity-title { font-weight: 600; font-size: 13.5px; }
+    .activity-sub { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+    .activity-meta { display: flex; align-items: center; gap: 10px; flex: none; }
+    .activity-date { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+    .activity-pill {
+      font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+      border-radius: 20px; padding: 3px 9px; white-space: nowrap; color: var(--ink-2); background: var(--surface);
+      border: 1px solid var(--border-soft);
+    }
+    .activity-pill.submitted, .activity-pill.reviewed, .activity-pill.accepted { color: #4E7A45; background: rgba(78, 122, 69, 0.12); border-color: transparent; }
+    .activity-pill.denied { color: var(--garnet); background: rgba(107, 15, 30, 0.1); border-color: transparent; }
+    .activity-pill.draft { color: var(--ink-2); background: var(--surface); }
 
     /* ---- Sidebar ---- */
     #sidebar {
@@ -556,8 +578,8 @@
 
     <div id="historyView" class="route">
       <div class="panel-title">History</div>
-      <div class="panel-subtitle">Patients, cases, encounters, and claim status -- coming soon.</div>
-      <div id="historyEmpty">Nothing here yet. This is where past encounters and claims will live once they're persisted.</div>
+      <div class="panel-subtitle">Recent encounters and claims, most recent first. Patient and case navigation is coming next.</div>
+      <div id="historyActivity"></div>
     </div>
   </div>
 
@@ -635,10 +657,96 @@
       for (const btn of railButtons) {
         btn.classList.toggle("active", btn.dataset.route === route);
       }
+      if (route === "history") loadActivity();
     }
 
     for (const btn of railButtons) {
       btn.addEventListener("click", () => showRoute(btn.dataset.route));
+    }
+
+    const historyActivityEl = document.getElementById("historyActivity");
+
+    function formatActivityDate(isoString) {
+      if (!isoString) return "";
+      const d = new Date(isoString);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    }
+
+    function renderActivityRow(item) {
+      const row = document.createElement("div");
+      row.className = "activity-row " + item.type;
+
+      const icon = document.createElement("div");
+      icon.className = "activity-icon";
+      icon.textContent = item.type === "claim" ? "$" : "E";
+      row.appendChild(icon);
+
+      const main = document.createElement("div");
+      main.className = "activity-main";
+      const title = document.createElement("div");
+      title.className = "activity-title";
+      const sub = document.createElement("div");
+      sub.className = "activity-sub";
+      if (item.type === "encounter") {
+        title.textContent = item.patientName || "Unknown patient";
+        sub.textContent = item.caseTitle ? `Encounter · ${item.caseTitle}` : "Encounter";
+      } else {
+        title.textContent = item.patientName || "Unknown patient";
+        sub.textContent = item.payerName ? `Claim · ${item.payerName}` : "Claim";
+      }
+      main.appendChild(title);
+      main.appendChild(sub);
+      row.appendChild(main);
+
+      const meta = document.createElement("div");
+      meta.className = "activity-meta";
+      if (item.status) {
+        const pill = document.createElement("span");
+        pill.className = "activity-pill " + item.status;
+        pill.textContent = item.status;
+        meta.appendChild(pill);
+      }
+      const date = document.createElement("span");
+      date.className = "activity-date";
+      date.textContent = formatActivityDate(item.timestamp);
+      meta.appendChild(date);
+      row.appendChild(meta);
+
+      return row;
+    }
+
+    async function loadActivity() {
+      historyActivityEl.innerHTML = '<div id="historyEmpty">Loading recent activity...</div>';
+      try {
+        const res = await fetch("/api/activity");
+        const data = await res.json();
+        if (!res.ok) {
+          historyActivityEl.innerHTML = "";
+          const msg = document.createElement("div");
+          msg.id = "historyEmpty";
+          msg.textContent = data.error || "Couldn't load recent activity.";
+          historyActivityEl.appendChild(msg);
+          return;
+        }
+        const items = data.activity || [];
+        if (items.length === 0) {
+          historyActivityEl.innerHTML =
+            '<div id="historyEmpty">Nothing here yet. Recent encounters and claims will show up here once there\'s activity.</div>';
+          return;
+        }
+        historyActivityEl.innerHTML = "";
+        const card = document.createElement("div");
+        card.className = "card";
+        card.style.padding = "0";
+        for (const item of items) {
+          card.appendChild(renderActivityRow(item));
+        }
+        historyActivityEl.appendChild(card);
+      } catch (err) {
+        console.error("Loading activity failed:", err);
+        historyActivityEl.innerHTML = '<div id="historyEmpty">Couldn\'t load recent activity. Is the server running?</div>';
+      }
     }
 
     const navButtons = Array.from(document.querySelectorAll(".nav-item"));
@@ -1594,7 +1702,7 @@
         const res = await fetch("/api/submit-claim", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ claim: state.claim }),
+          body: JSON.stringify({ claim: state.claim, encounterId: state.encounterId }),
         });
         const data = await res.json();
         stediStatusEl.textContent = "";
