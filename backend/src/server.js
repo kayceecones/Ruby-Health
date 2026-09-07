@@ -336,6 +336,25 @@ app.get("/api/cases/:caseId/encounters", async (req, res) => {
   }
 });
 
+// Build-order step 9: the History encounter view reads this to show the
+// 4-tab UI in read mode, against what was actually persisted, instead of
+// running the live pipeline. Returns every version of every stage -- the
+// frontend picks the latest per stage for now; step 10's version-history
+// disclosure needs the same data, so this endpoint doesn't change then.
+app.get("/api/encounters/:encounterId/artifacts", async (req, res) => {
+  if (!requireRepository(res)) return;
+  try {
+    const history = await repository.getArtifactHistory(req.params.encounterId);
+    res.json({ history });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Loading artifact history failed:", err);
+    res.status(502).json({ error: "Loading artifact history failed. See server logs for details." });
+  }
+});
+
 app.post("/api/cases", async (req, res) => {
   if (!requireRepository(res)) return;
   const { patientId, title } = req.body || {};
