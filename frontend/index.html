@@ -57,7 +57,15 @@
     /* ---- History route ---- */
     #historyView.route.active { display: block; }
     #historyView { flex: 1; min-width: 0; padding: 32px 44px; max-width: 900px; }
-    #historyEmpty { color: var(--ink-2); font-size: 13.5px; line-height: 1.6; }
+    .history-empty { color: var(--ink-2); font-size: 13.5px; line-height: 1.6; }
+    .history-section-title { font-weight: 600; font-size: 13.5px; color: var(--plum); margin: 28px 0 10px; }
+    .history-breadcrumb { font-size: 12.5px; color: var(--ink-2); margin-bottom: 16px; }
+    .history-breadcrumb a { cursor: pointer; text-decoration: none; }
+    .history-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+    .history-header h2 { font-family: 'Manrope', system-ui, sans-serif; font-size: 18px; font-weight: 700; color: var(--ink); margin: 0; }
+    .history-header-sub { font-size: 12.5px; color: var(--ink-2); margin-bottom: 18px; }
+    .history-row-link { background: none; border: none; padding: 0; margin: 0; width: 100%; text-align: left; }
+    .history-row-link:hover .activity-row { background: var(--surface); }
     .activity-row {
       display: flex; align-items: center; gap: 14px; padding: 14px 16px;
     }
@@ -578,8 +586,20 @@
 
     <div id="historyView" class="route">
       <div class="panel-title">History</div>
-      <div class="panel-subtitle">Recent encounters and claims, most recent first. Patient and case navigation is coming next.</div>
-      <div id="historyActivity"></div>
+      <div class="panel-subtitle">Recent activity, and every patient's cases and visits.</div>
+
+      <div id="historyBreadcrumb" class="history-breadcrumb" style="display: none;"></div>
+
+      <div id="historyRoot">
+        <div id="historyActivity"></div>
+
+        <div class="history-section-title">Patients</div>
+        <input id="historyPatientSearch" class="row-input" type="text" placeholder="Search patients by name..." style="margin-bottom: 12px;" />
+        <div id="historyPatientList"></div>
+      </div>
+
+      <div id="historyPatientView" style="display: none;"></div>
+      <div id="historyCaseView" style="display: none;"></div>
     </div>
   </div>
 
@@ -657,7 +677,7 @@
       for (const btn of railButtons) {
         btn.classList.toggle("active", btn.dataset.route === route);
       }
-      if (route === "history") loadActivity();
+      if (route === "history") showHistoryRoot();
     }
 
     for (const btn of railButtons) {
@@ -665,6 +685,19 @@
     }
 
     const historyActivityEl = document.getElementById("historyActivity");
+    const historyRootEl = document.getElementById("historyRoot");
+    const historyPatientViewEl = document.getElementById("historyPatientView");
+    const historyCaseViewEl = document.getElementById("historyCaseView");
+    const historyBreadcrumbEl = document.getElementById("historyBreadcrumb");
+    const historyPatientListEl = document.getElementById("historyPatientList");
+    const historyPatientSearchEl = document.getElementById("historyPatientSearch");
+
+    // Drill-down state for the History route: root (activity + patient
+    // list) -> patient (that patient's cases) -> case (that case's
+    // encounters, chronological). Opening an encounter in read mode is
+    // step 9, not this one.
+    let historyState = { view: "root" };
+    let historyPatients = [];
 
     function formatActivityDate(isoString) {
       if (!isoString) return "";
@@ -716,37 +749,298 @@
       return row;
     }
 
-    async function loadActivity() {
-      historyActivityEl.innerHTML = '<div id="historyEmpty">Loading recent activity...</div>';
+    // Shared list-loading shape for every History list (activity, patients,
+    // cases, encounters): a loading state, an error or empty message, or a
+    // card of rows. Pulled out once four call sites turned out identical.
+    function renderRowCard(container, items, renderRow, emptyMessage) {
+      if (items.length === 0) {
+        container.innerHTML = "";
+        const msg = document.createElement("div");
+        msg.className = "history-empty";
+        msg.textContent = emptyMessage;
+        container.appendChild(msg);
+        return;
+      }
+      container.innerHTML = "";
+      const card = document.createElement("div");
+      card.className = "card";
+      card.style.padding = "0";
+      for (const item of items) card.appendChild(renderRow(item));
+      container.appendChild(card);
+    }
+
+    async function fetchHistoryList(container, url, { renderRow, emptyMessage, onData }) {
+      container.innerHTML = '<div class="history-empty">Loading...</div>';
       try {
-        const res = await fetch("/api/activity");
+        const res = await fetch(url);
         const data = await res.json();
         if (!res.ok) {
-          historyActivityEl.innerHTML = "";
-          const msg = document.createElement("div");
-          msg.id = "historyEmpty";
-          msg.textContent = data.error || "Couldn't load recent activity.";
-          historyActivityEl.appendChild(msg);
+          renderRowCard(container, [], renderRow, data.error || "Couldn't load this.");
           return;
         }
-        const items = data.activity || [];
-        if (items.length === 0) {
-          historyActivityEl.innerHTML =
-            '<div id="historyEmpty">Nothing here yet. Recent encounters and claims will show up here once there\'s activity.</div>';
-          return;
-        }
-        historyActivityEl.innerHTML = "";
-        const card = document.createElement("div");
-        card.className = "card";
-        card.style.padding = "0";
-        for (const item of items) {
-          card.appendChild(renderActivityRow(item));
-        }
-        historyActivityEl.appendChild(card);
+        renderRowCard(container, onData(data), renderRow, emptyMessage);
       } catch (err) {
-        console.error("Loading activity failed:", err);
-        historyActivityEl.innerHTML = '<div id="historyEmpty">Couldn\'t load recent activity. Is the server running?</div>';
+        console.error(`Loading ${url} failed:`, err);
+        renderRowCard(container, [], renderRow, "Couldn't load this. Is the server running?");
       }
+    }
+
+    function loadActivity() {
+      return fetchHistoryList(historyActivityEl, "/api/activity", {
+        renderRow: renderActivityRow,
+        emptyMessage: "Nothing here yet. Recent encounters and claims will show up here once there's activity.",
+        onData: (data) => data.activity || [],
+      });
+    }
+
+    // Wraps a row in a clickable button so patient/case rows can drill in,
+    // while encounter rows (step 9's job, not this one) stay plain divs.
+    function historyRowLink(row, onClick) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "history-row-link";
+      btn.appendChild(row);
+      btn.addEventListener("click", onClick);
+      return btn;
+    }
+
+    function renderPatientRow(patient) {
+      const row = document.createElement("div");
+      row.className = "activity-row";
+
+      const icon = document.createElement("div");
+      icon.className = "activity-icon";
+      icon.textContent = "P";
+      row.appendChild(icon);
+
+      const main = document.createElement("div");
+      main.className = "activity-main";
+      const title = document.createElement("div");
+      title.className = "activity-title";
+      title.textContent = patient.name;
+      const sub = document.createElement("div");
+      sub.className = "activity-sub";
+      const openCount = patient.openCaseCount || 0;
+      sub.textContent = `${patient.patientId} · ${openCount} open case${openCount === 1 ? "" : "s"}`;
+      main.appendChild(title);
+      main.appendChild(sub);
+      row.appendChild(main);
+
+      const meta = document.createElement("div");
+      meta.className = "activity-meta";
+      const date = document.createElement("span");
+      date.className = "activity-date";
+      date.textContent = patient.lastActivity ? formatActivityDate(patient.lastActivity) : "No activity yet";
+      meta.appendChild(date);
+      row.appendChild(meta);
+
+      return historyRowLink(row, () => openHistoryPatient(patient));
+    }
+
+    function filterHistoryPatients() {
+      const query = historyPatientSearchEl.value.trim().toLowerCase();
+      return query ? historyPatients.filter((p) => p.name.toLowerCase().includes(query)) : historyPatients;
+    }
+
+    function loadHistoryPatients() {
+      return fetchHistoryList(historyPatientListEl, "/api/patients", {
+        renderRow: renderPatientRow,
+        emptyMessage: "No patients yet.",
+        onData: (data) => {
+          historyPatients = data.patients || [];
+          return filterHistoryPatients();
+        },
+      });
+    }
+
+    historyPatientSearchEl.addEventListener("input", () => {
+      renderRowCard(historyPatientListEl, filterHistoryPatients(), renderPatientRow, "No patients match your search.");
+    });
+
+    function renderHistoryBreadcrumb() {
+      if (historyState.view === "root") {
+        historyBreadcrumbEl.style.display = "none";
+        historyBreadcrumbEl.innerHTML = "";
+        return;
+      }
+      historyBreadcrumbEl.style.display = "block";
+      const parts = ['<a data-nav="root">History</a>'];
+      if (historyState.view === "patient") {
+        parts.push(" / <span>" + escapeHtml(historyState.patient.name) + "</span>");
+      } else if (historyState.view === "case") {
+        parts.push(' / <a data-nav="patient">' + escapeHtml(historyState.patient.name) + "</a>");
+        parts.push(" / <span>" + escapeHtml(historyState.case.title || historyState.case.caseId) + "</span>");
+      }
+      historyBreadcrumbEl.innerHTML = parts.join("");
+      historyBreadcrumbEl.querySelectorAll("[data-nav]").forEach((el) => {
+        el.addEventListener("click", () => {
+          if (el.dataset.nav === "root") showHistoryRoot();
+          else if (el.dataset.nav === "patient") openHistoryPatient(historyState.patient);
+        });
+      });
+    }
+
+    function renderHistoryDetailHeader(container, title, subtitle, sectionTitle) {
+      container.innerHTML = "";
+      const header = document.createElement("div");
+      header.className = "history-header";
+      const h2 = document.createElement("h2");
+      h2.textContent = title;
+      header.appendChild(h2);
+      container.appendChild(header);
+
+      const sub = document.createElement("div");
+      sub.className = "history-header-sub";
+      sub.textContent = subtitle;
+      container.appendChild(sub);
+
+      const section = document.createElement("div");
+      section.className = "history-section-title";
+      section.style.marginTop = "0";
+      section.textContent = sectionTitle;
+      container.appendChild(section);
+
+      const listEl = document.createElement("div");
+      container.appendChild(listEl);
+      return listEl;
+    }
+
+    function sortCasesOpenFirst(cases) {
+      return [...cases].sort((a, b) => {
+        if (a.status !== b.status) return a.status === "open" ? -1 : 1;
+        return (b.lastActivity || "").localeCompare(a.lastActivity || "");
+      });
+    }
+
+    function renderCaseRow(patient, c) {
+      const row = document.createElement("div");
+      row.className = "activity-row";
+
+      const icon = document.createElement("div");
+      icon.className = "activity-icon";
+      icon.textContent = "C";
+      row.appendChild(icon);
+
+      const main = document.createElement("div");
+      main.className = "activity-main";
+      const title = document.createElement("div");
+      title.className = "activity-title";
+      title.textContent = c.title || c.caseId;
+      const sub = document.createElement("div");
+      sub.className = "activity-sub";
+      const visitCount = c.visitCount || 0;
+      sub.textContent = `${c.caseId} · ${visitCount} visit${visitCount === 1 ? "" : "s"}`;
+      main.appendChild(title);
+      main.appendChild(sub);
+      row.appendChild(main);
+
+      const meta = document.createElement("div");
+      meta.className = "activity-meta";
+      const pill = document.createElement("span");
+      pill.className = "activity-pill " + c.status;
+      pill.textContent = c.status;
+      meta.appendChild(pill);
+      const date = document.createElement("span");
+      date.className = "activity-date";
+      date.textContent = c.lastActivity ? formatActivityDate(c.lastActivity) : "No activity yet";
+      meta.appendChild(date);
+      row.appendChild(meta);
+
+      return historyRowLink(row, () => openHistoryCase(patient, c));
+    }
+
+    function openHistoryPatient(patient) {
+      historyState = { view: "patient", patient };
+      renderHistoryBreadcrumb();
+      historyRootEl.style.display = "none";
+      historyCaseViewEl.style.display = "none";
+      historyPatientViewEl.style.display = "block";
+
+      const listEl = renderHistoryDetailHeader(
+        historyPatientViewEl,
+        patient.name,
+        `${patient.patientId} · DOB ${patient.dateOfBirth || "unknown"}`,
+        "Cases"
+      );
+      fetchHistoryList(listEl, `/api/patients/${encodeURIComponent(patient.patientId)}/cases`, {
+        renderRow: (c) => renderCaseRow(patient, c),
+        emptyMessage: "No cases yet for this patient.",
+        onData: (data) => sortCasesOpenFirst(data.cases || []),
+      });
+    }
+
+    function renderEncounterRow(e) {
+      const row = document.createElement("div");
+      row.className = "activity-row";
+
+      const icon = document.createElement("div");
+      icon.className = "activity-icon";
+      icon.textContent = "E";
+      row.appendChild(icon);
+
+      const main = document.createElement("div");
+      main.className = "activity-main";
+      const title = document.createElement("div");
+      title.className = "activity-title";
+      title.textContent = e.encounterId;
+      const sub = document.createElement("div");
+      sub.className = "activity-sub";
+      sub.textContent = "Encounter";
+      main.appendChild(title);
+      main.appendChild(sub);
+      row.appendChild(main);
+
+      const meta = document.createElement("div");
+      meta.className = "activity-meta";
+      const pill = document.createElement("span");
+      pill.className = "activity-pill " + e.status;
+      pill.textContent = e.status;
+      meta.appendChild(pill);
+      const date = document.createElement("span");
+      date.className = "activity-date";
+      date.textContent = formatActivityDate(e.occurredAt || e.createdAt);
+      meta.appendChild(date);
+      row.appendChild(meta);
+
+      // Not a historyRowLink: opening an encounter in read mode is step 9.
+      return row;
+    }
+
+    function openHistoryCase(patient, caseObj) {
+      historyState = { view: "case", patient, case: caseObj };
+      renderHistoryBreadcrumb();
+      historyPatientViewEl.style.display = "none";
+      historyCaseViewEl.style.display = "block";
+
+      const statusNote =
+        caseObj.status === "closed" && caseObj.closedAt ? `closed ${formatActivityDate(caseObj.closedAt)}` : caseObj.status;
+      const listEl = renderHistoryDetailHeader(
+        historyCaseViewEl,
+        caseObj.title || caseObj.caseId,
+        `${caseObj.caseId} · ${patient.name} · ${statusNote}`,
+        "Encounters"
+      );
+      fetchHistoryList(listEl, `/api/cases/${encodeURIComponent(caseObj.caseId)}/encounters`, {
+        renderRow: renderEncounterRow,
+        emptyMessage: "No encounters recorded for this case yet.",
+        onData: (data) => data.encounters || [],
+      });
+
+      const note = document.createElement("div");
+      note.className = "history-empty";
+      note.style.marginTop = "12px";
+      note.textContent = "Opening an encounter in read mode is coming in the next step.";
+      historyCaseViewEl.appendChild(note);
+    }
+
+    function showHistoryRoot() {
+      historyState = { view: "root" };
+      renderHistoryBreadcrumb();
+      historyPatientViewEl.style.display = "none";
+      historyCaseViewEl.style.display = "none";
+      historyRootEl.style.display = "block";
+      loadActivity();
+      loadHistoryPatients();
     }
 
     const navButtons = Array.from(document.querySelectorAll(".nav-item"));

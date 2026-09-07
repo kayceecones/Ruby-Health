@@ -164,11 +164,46 @@ async function autoProvisionEncounter(facts) {
   }
 }
 
+// Encounters are optional at the repository level (see NotionRepository's
+// constructor), so anything computing "last activity" or a visit count from
+// them needs to degrade to "no encounters" rather than fail outright.
+async function listEncountersForCaseSafe(caseId) {
+  try {
+    return await repository.listEncountersForCase(caseId);
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) return [];
+    throw err;
+  }
+}
+
+function latestTimestamp(timestamps) {
+  const present = timestamps.filter(Boolean);
+  return present.length ? present.sort().at(-1) : null;
+}
+
 app.get("/api/patients", async (_req, res) => {
   if (!requireRepository(res)) return;
   try {
     const patients = await repository.listPatients();
-    res.json({ patients });
+    // The History patient list needs open-case count and last-activity per
+    // row; every other caller of this endpoint (patient search in the New
+    // Claim intake step) just ignores the extra fields.
+    const enriched = await Promise.all(
+      patients.map(async (patient) => {
+        const cases = await repository.listCasesForPatient(patient.patientId);
+        const encounterLists = await Promise.all(cases.map((c) => listEncountersForCaseSafe(c.caseId)));
+        const encounters = encounterLists.flat();
+        return {
+          ...patient,
+          openCaseCount: cases.filter((c) => c.status === "open").length,
+          lastActivity: latestTimestamp([
+            ...encounters.map((e) => e.createdAt || e.occurredAt),
+            ...cases.map((c) => c.openedAt),
+          ]),
+        };
+      })
+    );
+    res.json({ patients: enriched });
   } catch (err) {
     console.error("Listing patients failed:", err);
     res.status(502).json({ error: "Listing patients failed. See server logs for details." });
@@ -264,10 +299,40 @@ app.get("/api/patients/:patientId/cases", async (req, res) => {
   if (!requireRepository(res)) return;
   try {
     const cases = await repository.listCasesForPatient(req.params.patientId);
-    res.json({ cases });
+    // The History patient view needs a visit count and last-activity per
+    // case row; the New Claim intake step's case picker ignores the extras.
+    const enriched = await Promise.all(
+      cases.map(async (c) => {
+        const encounters = await listEncountersForCaseSafe(c.caseId);
+        return {
+          ...c,
+          visitCount: encounters.length,
+          lastActivity: latestTimestamp([...encounters.map((e) => e.createdAt || e.occurredAt), c.openedAt]),
+        };
+      })
+    );
+    res.json({ cases: enriched });
   } catch (err) {
     console.error("Listing cases failed:", err);
     res.status(502).json({ error: "Listing cases failed. See server logs for details." });
+  }
+});
+
+// The History case view's encounter list -- chronological, per build-order
+// step 8. listEncountersForCase already sorts oldest-first (see
+// NotionRepository.js); this is a thin wrapper, same shape as the other
+// GET endpoints above.
+app.get("/api/cases/:caseId/encounters", async (req, res) => {
+  if (!requireRepository(res)) return;
+  try {
+    const encounters = await repository.listEncountersForCase(req.params.caseId);
+    res.json({ encounters });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Listing encounters failed:", err);
+    res.status(502).json({ error: "Listing encounters failed. See server logs for details." });
   }
 });
 
