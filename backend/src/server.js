@@ -17,6 +17,7 @@ import { loadCodeSet } from "../../reference/loadCodes.mjs";
 import { createNotionRepositoryFromEnv, createBlobStoreFromEnv, NotionRepositoryError } from "./repository/index.js";
 import { RemittanceParseError } from "./pipeline/parseRemittance.js";
 import { ingestRemittance, RemittanceIngestError } from "./pipeline/ingestRemittance.js";
+import { draftAppeal } from "./pipeline/draftAppeal.js";
 import { loadAdjustmentCodes } from "../../reference/loadAdjustmentCodes.mjs";
 import {
   getProviderProfile,
@@ -505,6 +506,59 @@ app.post("/api/claims/:claimId/remittance", async (req, res) => {
     }
     console.error("Ingesting remittance failed:", err);
     res.status(502).json({ error: "Ingesting remittance failed. See server logs for details." });
+  }
+});
+
+// The one model call in the denial loop. Everything before it is arithmetic;
+// this reads the denial against what actually happened in the room.
+app.post("/api/claims/:claimId/appeal", async (req, res) => {
+  if (!requireRepository(res)) return;
+
+  if (!anthropic) {
+    return res.status(500).json({
+      error: "ANTHROPIC_API_KEY is not configured on the server. Add it to backend/.env and restart.",
+    });
+  }
+
+  try {
+    const claim = await repository.getClaim(req.params.claimId);
+    if (!claim) return res.status(404).json({ error: `No claim found with claim_id '${req.params.claimId}'.` });
+
+    const feedback = await repository.listPayerFeedbackForClaim(claim.claimId);
+    const latest = feedback[feedback.length - 1];
+    const analysis = latest?.content?.analysis;
+    if (!analysis) {
+      return res.status(400).json({ error: "No payer response has been recorded for this claim yet." });
+    }
+
+    // The appeal is built out of the encounter record, so it needs the record.
+    const [transcriptArtifact, factsArtifact, codesArtifact] = await Promise.all([
+      repository.getLatestArtifact(claim.encounterId, "transcript"),
+      repository.getLatestArtifact(claim.encounterId, "facts"),
+      repository.getLatestArtifact(claim.encounterId, "codes"),
+    ]);
+
+    const transcript = transcriptArtifact?.content?.transcript || "";
+    if (!transcript.trim()) {
+      return res.status(400).json({
+        error: "This encounter has no transcript on file, so there is nothing to ground an appeal in.",
+      });
+    }
+
+    const draft = await draftAppeal(anthropic, MODEL, {
+      analysis,
+      facts: factsArtifact?.content || null,
+      transcript,
+      codes: codesArtifact?.content || [],
+    });
+
+    res.json({ draft });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Drafting an appeal failed:", err);
+    res.status(502).json({ error: "Drafting an appeal failed. See server logs for details." });
   }
 });
 

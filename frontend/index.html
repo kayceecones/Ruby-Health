@@ -126,6 +126,22 @@
     .payer-finding.unknown { border-style: dashed; }
     .payer-deadline { font-size: 12px; color: var(--ink-2); margin-top: 12px; }
     .payer-deadline .urgent { color: var(--garnet); font-weight: 600; }
+    .appeal-letter {
+      white-space: pre-wrap; font-size: 13px; line-height: 1.65; background: var(--surface);
+      border: 1px solid var(--border-soft); border-radius: 10px; padding: 14px 16px; margin: 10px 0;
+    }
+    .appeal-warning {
+      background: rgba(207, 66, 74, 0.1); border: 1px solid rgba(207, 66, 74, 0.35); border-radius: 8px;
+      padding: 10px 12px; font-size: 12.5px; color: var(--garnet); margin: 10px 0;
+    }
+    .appeal-quote { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; margin-bottom: 6px; line-height: 1.5; }
+    .appeal-quote .verdict {
+      flex: none; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+      padding: 2px 7px; border-radius: 20px; margin-top: 1px;
+    }
+    .appeal-quote .verdict.verified { background: rgba(78, 122, 69, 0.14); color: #4E7A45; }
+    .appeal-quote .verdict.paraphrased { background: rgba(184, 150, 90, 0.2); color: var(--plum); }
+    .appeal-quote .verdict.unsupported { background: rgba(107, 15, 30, 0.12); color: var(--garnet); }
     #remittanceInput {
       width: 100%; min-height: 120px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11.5px;
       line-height: 1.5; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: 8px;
@@ -1660,6 +1676,134 @@
       return wrap;
     }
 
+    const APPEAL_ACTION_LABELS = {
+      appeal: "Appeal this",
+      corrected_claim: "File a corrected claim",
+      write_off: "Write it off",
+      bill_patient: "Bill the patient",
+      needs_more_information: "Needs more information",
+    };
+
+    function renderAppealDraft(draft) {
+      const wrap = document.createElement("div");
+
+      const verdict = document.createElement("div");
+      verdict.className = "payer-route" + (draft.worthAppealing ? "" : " calm");
+      verdict.style.marginTop = "14px";
+      verdict.textContent = APPEAL_ACTION_LABELS[draft.recommendedAction] || draft.recommendedAction;
+      wrap.appendChild(verdict);
+
+      const assessment = document.createElement("div");
+      assessment.className = "payer-finding";
+      assessment.textContent = draft.denialAssessment;
+      wrap.appendChild(assessment);
+
+      // An appeal quoting something the transcript does not carry would
+      // discredit the whole letter -- never let that reach a payer unflagged.
+      if (draft.needsReviewBeforeSending) {
+        const warn = document.createElement("div");
+        warn.className = "appeal-warning";
+        warn.textContent =
+          `${draft.unsupportedQuoteCount} quote(s) in this draft could not be found in the transcript. ` +
+          "Fix or remove them before this goes anywhere near a payer.";
+        wrap.appendChild(warn);
+      }
+
+      if (draft.quoteGrounding?.length) {
+        const head = document.createElement("div");
+        head.className = "eyebrow";
+        head.style.marginTop = "14px";
+        head.textContent = "Quotes, checked against the transcript";
+        wrap.appendChild(head);
+
+        for (const q of draft.quoteGrounding) {
+          const row = document.createElement("div");
+          row.className = "appeal-quote";
+          const verdictEl = document.createElement("span");
+          verdictEl.className = "verdict " + q.status;
+          verdictEl.textContent = q.status;
+          const text = document.createElement("span");
+          text.textContent = `"${q.quote}"`;
+          row.appendChild(verdictEl);
+          row.appendChild(text);
+          wrap.appendChild(row);
+        }
+      }
+
+      if (draft.suggestedCodeChanges?.length) {
+        const head = document.createElement("div");
+        head.className = "eyebrow";
+        head.style.marginTop = "14px";
+        head.textContent = "Suggested code changes";
+        wrap.appendChild(head);
+        wrap.appendChild(
+          roTable(
+            ["Submitted", "Suggested", "Why"],
+            draft.suggestedCodeChanges.map((c) => [c.currentCode, c.suggestedCode || "(drop the line)", c.reason])
+          )
+        );
+      }
+
+      if (draft.letterBody) {
+        const head = document.createElement("div");
+        head.className = "eyebrow";
+        head.style.marginTop = "14px";
+        head.textContent = "Draft appeal letter";
+        wrap.appendChild(head);
+        const letter = document.createElement("div");
+        letter.className = "appeal-letter";
+        letter.textContent = draft.letterBody;
+        wrap.appendChild(letter);
+
+        const note = document.createElement("div");
+        note.className = "payer-deadline";
+        note.textContent = "A draft for a human to review and send -- Ruby does not submit appeals.";
+        wrap.appendChild(note);
+      }
+
+      return wrap;
+    }
+
+    function renderAppealSection(claim) {
+      const wrap = document.createElement("div");
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-primary";
+      btn.style.marginTop = "14px";
+      btn.textContent = "Draft an appeal from the transcript";
+
+      const status = document.createElement("div");
+      status.className = "status";
+
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        status.textContent = "Reading the denial against the encounter record...";
+        status.className = "status";
+        try {
+          const res = await fetch(`/api/claims/${encodeURIComponent(claim.claimId)}/appeal`, { method: "POST" });
+          const data = await res.json();
+          if (!res.ok) {
+            status.textContent = data.error || "Could not draft an appeal.";
+            status.className = "status error";
+            btn.disabled = false;
+            return;
+          }
+          status.textContent = "";
+          btn.style.display = "none";
+          wrap.appendChild(renderAppealDraft(data.draft));
+        } catch (err) {
+          status.textContent = "Something went wrong: " + err.message;
+          status.className = "status error";
+          btn.disabled = false;
+        }
+      });
+
+      wrap.appendChild(btn);
+      wrap.appendChild(status);
+      return wrap;
+    }
+
     function renderClaimCard(claim, encounter, caseObj, reload) {
       const card = document.createElement("div");
       card.className = "card";
@@ -1704,8 +1848,13 @@
           // Newest response wins the summary; earlier ones stay listed.
           const latest = feedback[feedback.length - 1];
           const analysis = latest.content?.analysis;
-          if (analysis) body.appendChild(renderPayerAnalysis(analysis));
-          else body.appendChild(roEmpty("This payer response was recorded before Ruby could read it."));
+          if (analysis) {
+            body.appendChild(renderPayerAnalysis(analysis));
+            // Only offer an appeal where there is money still worth chasing.
+            if ((analysis.money?.atRisk || 0) > 0) body.appendChild(renderAppealSection(claim));
+          } else {
+            body.appendChild(roEmpty("This payer response was recorded before Ruby could read it."));
+          }
 
           if (feedback.length > 1) {
             const earlier = document.createElement("div");
