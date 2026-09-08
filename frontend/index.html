@@ -1685,7 +1685,51 @@
       needs_more_information: "Needs more information",
     };
 
-    function renderAppealDraft(draft) {
+    function renderCorrectedClaimAction(claim, suggestedCodeChanges, reload) {
+      const wrap = document.createElement("div");
+      wrap.style.marginTop = "14px";
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-primary";
+      btn.textContent = "File corrected claim";
+
+      const status = document.createElement("div");
+      status.className = "status";
+
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        status.textContent = "Building and submitting the corrected claim...";
+        status.className = "status";
+        try {
+          const res = await fetch(`/api/claims/${encodeURIComponent(claim.claimId)}/resubmit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ suggestedCodeChanges }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            status.textContent = data.error || "Could not file the corrected claim.";
+            status.className = "status error";
+            btn.disabled = false;
+            return;
+          }
+          status.textContent = `Filed ${data.claim.claimId}, chained to ${claim.claimId}.`;
+          status.className = "status";
+          reload();
+        } catch (err) {
+          status.textContent = "Something went wrong: " + err.message;
+          status.className = "status error";
+          btn.disabled = false;
+        }
+      });
+
+      wrap.appendChild(btn);
+      wrap.appendChild(status);
+      return wrap;
+    }
+
+    function renderAppealDraft(draft, claim, reload) {
       const wrap = document.createElement("div");
 
       const verdict = document.createElement("div");
@@ -1743,6 +1787,10 @@
             draft.suggestedCodeChanges.map((c) => [c.currentCode, c.suggestedCode || "(drop the line)", c.reason])
           )
         );
+
+        if (draft.recommendedAction === "corrected_claim" && claim) {
+          wrap.appendChild(renderCorrectedClaimAction(claim, draft.suggestedCodeChanges, reload));
+        }
       }
 
       if (draft.letterBody) {
@@ -1765,7 +1813,7 @@
       return wrap;
     }
 
-    function renderAppealSection(claim) {
+    function renderAppealSection(claim, reload) {
       const wrap = document.createElement("div");
 
       const btn = document.createElement("button");
@@ -1792,7 +1840,7 @@
           }
           status.textContent = "";
           btn.style.display = "none";
-          wrap.appendChild(renderAppealDraft(data.draft));
+          wrap.appendChild(renderAppealDraft(data.draft, claim, reload));
         } catch (err) {
           status.textContent = "Something went wrong: " + err.message;
           status.className = "status error";
@@ -1852,7 +1900,7 @@
           if (analysis) {
             body.appendChild(renderPayerAnalysis(analysis));
             // Only offer an appeal where there is money still worth chasing.
-            if ((analysis.money?.atRisk || 0) > 0) body.appendChild(renderAppealSection(claim));
+            if ((analysis.money?.atRisk || 0) > 0) body.appendChild(renderAppealSection(claim, reload));
           } else {
             body.appendChild(roEmpty("This payer response was recorded before Ruby could read it."));
           }

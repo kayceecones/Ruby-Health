@@ -158,7 +158,16 @@ export function buildStediClaim(claim, config = {}) {
       patientControlNumber: (claim.claimId || `ruby-${Date.now()}`).slice(0, 17),
       claimChargeAmount,
       placeOfServiceCode: config.placeOfServiceCode || "11", // Office
-      claimFrequencyCode: "1", // original claim
+      // 1 = original claim, 7 = replacement/corrected claim (X12 CLM05-3).
+      claimFrequencyCode: config.claimFrequencyCode || "1",
+      // Required alongside frequency code 7 -- without it the payer reads a
+      // correction as a brand-new claim and denies it as a duplicate. Named
+      // originalReferenceNumber to match the X12 REF*F8 segment (Original
+      // Reference Number) under Stedi's own camelCase convention for this
+      // schema -- not yet confirmed against a live corrected submission in
+      // the sandbox, the same caveat parseRemittance.js carried until its
+      // real-document check. Flag this comment for removal once that's done.
+      ...(config.originalReferenceNumber ? { originalReferenceNumber: config.originalReferenceNumber } : {}),
       planParticipationCode: "A", // assigned
       benefitsAssignmentCertificationIndicator: "Y",
       releaseInformationCode: "Y",

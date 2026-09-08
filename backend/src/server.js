@@ -10,6 +10,7 @@ import { suggestCodes } from "./pipeline/suggestCodes.js";
 import { populateClaim, ClaimError } from "./pipeline/populateClaim.js";
 import { verifyNecessityQuotes } from "./pipeline/verifyQuotes.js";
 import { buildStediClaim, StediMappingError } from "./pipeline/buildStediClaim.js";
+import { buildCorrectedClaim, CorrectedClaimError } from "./pipeline/buildCorrectedClaim.js";
 import { submitToStedi, StediSubmissionError } from "./pipeline/submitToStedi.js";
 import { annotateValidation, unrecognisedCodes } from "./pipeline/validateCodes.js";
 import { usageTotals } from "./usage.js";
@@ -833,6 +834,92 @@ app.post("/api/submit-claim", async (req, res) => {
     }
     console.error("Stedi submission failed:", err);
     res.status(502).json({ error: "Stedi submission failed. See server logs for details.", stediClaim });
+  }
+});
+
+// Step 7 of the denial loop: a corrected claim, chained to the one it
+// replaces. Filed as its own Claim row (claimType "corrected", parentClaimId
+// pointing at the original) so History shows the pair rather than the
+// correction silently overwriting what was submitted before.
+app.post("/api/claims/:claimId/resubmit", async (req, res) => {
+  if (!requireRepository(res)) return;
+
+  const { suggestedCodeChanges } = req.body || {};
+  if (!Array.isArray(suggestedCodeChanges) || suggestedCodeChanges.length === 0) {
+    return res.status(400).json({ error: "Request body must include a non-empty 'suggestedCodeChanges' array." });
+  }
+
+  if (!STEDI_API_KEY) {
+    return res.status(500).json({
+      error: "STEDI_API_KEY is not configured on the server. Add it to backend/.env and restart.",
+    });
+  }
+
+  try {
+    const original = await repository.getClaim(req.params.claimId);
+    if (!original) return res.status(404).json({ error: `No claim found with claim_id '${req.params.claimId}'.` });
+
+    // Without this, the payer reads the resubmission as a brand-new claim
+    // and denies it as a duplicate -- record the remittance first.
+    if (!original.payerClaimControlNumber) {
+      return res.status(400).json({
+        error: "This claim has no payer claim control number on file yet. Record the payer's remittance before filing a correction.",
+      });
+    }
+
+    const artifact = await repository.getLatestArtifact(original.encounterId, "claim");
+    if (!artifact) {
+      return res.status(400).json({ error: "No populated claim is on file for this encounter to correct." });
+    }
+
+    let correctedClaim;
+    try {
+      correctedClaim = buildCorrectedClaim(artifact.content, suggestedCodeChanges);
+    } catch (err) {
+      if (err instanceof CorrectedClaimError) return res.status(400).json({ error: err.message });
+      throw err;
+    }
+
+    let stediClaim;
+    try {
+      stediClaim = buildStediClaim(correctedClaim, {
+        claimFrequencyCode: "7",
+        originalReferenceNumber: original.payerClaimControlNumber,
+      });
+    } catch (err) {
+      if (err instanceof StediMappingError) return res.status(400).json({ error: err.message });
+      throw err;
+    }
+
+    const stediResponse = await submitToStedi(stediClaim, STEDI_API_KEY);
+
+    const correctedArtifact = await repository.createArtifact({
+      encounterId: original.encounterId,
+      stage: "claim",
+      content: correctedClaim,
+      createdBy: "system",
+    });
+    const correctedClaimRow = await repository.createClaim({
+      encounterId: original.encounterId,
+      artifactId: correctedArtifact.artifactId,
+      claimType: "corrected",
+      parentClaimId: original.claimId,
+      payerName: original.payerName,
+      memberId: original.memberId,
+    });
+    await repository.updateClaimStatus(correctedClaimRow.claimId, "submitted");
+
+    res.json({ claim: correctedClaimRow, stediClaim, stediResponse });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err instanceof StediSubmissionError) {
+      console.error("Stedi rejected the corrected claim:", JSON.stringify(err.details));
+      return res.status(502).json({ error: err.message, details: err.details });
+    }
+    console.error("Filing a corrected claim failed:", err);
+    res.status(502).json({ error: "Filing a corrected claim failed. See server logs for details." });
   }
 });
 
