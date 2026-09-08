@@ -155,6 +155,43 @@ Spacing above a section title is handled by the stylesheet
 (`.card + .section-title`), so no call site sets its own margin. JS finds
 content by `data-` hooks, not by style class, so restyling can't break behavior.
 
+### Adding a section to a History view
+
+History views are built from a **declared skeleton, filled by name** — never by
+appending in document order. To add a section, add it to that view's `sections`
+list and fill its slot:
+
+```js
+const slots = renderDetailView(historyCaseViewEl, {
+  title: caseObj.title,
+  subtitle: `${caseObj.caseId} · ${patient.name}`,
+  sections: [
+    { name: "encounters", title: "Encounters" },
+    { name: "notes", title: "Case notes" },     // <- new section goes here
+  ],
+});
+fetchHistoryList(slots.encounters, ...);
+loadCaseNotes(slots.notes, ...);                 // lands in its own slot
+```
+
+The position is decided by the `sections` list, not by which fetch finishes
+first. **Do not `appendChild` onto a view container** — that is what put things
+in the wrong place before.
+
+Two more rules for these views:
+
+- **`showHistoryView(name)` is the only way to switch views.** It hides every
+  sibling. Hiding them by hand is how opening an encounter from the activity
+  feed used to leave the whole root list on screen above it.
+- **Tabs come from `buildTabbedPanels()`.** It carries the `role="tablist"` /
+  `aria-selected` wiring and arrow-key navigation. Don't hand-roll a tab strip.
+
+### Color
+
+`--gold` is decorative only — dots, rules, borders. It fails WCAG AA as text.
+Anything readable uses `--gold-text`. Before using a color for text, check it
+against `--surface` at 4.5:1 (3:1 for large bold text).
+
 ---
 
 ## Working with Kaycee

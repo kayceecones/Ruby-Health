@@ -8,12 +8,15 @@
     :root {
       --ink: #251C1B;
       --ink-2: #655F5D;
-      --ink-3: #9B9694;
+      --ink-3: #757270;
       --plum: #5C1A32;
       --garnet: #6B0F1E;
       --cherry: #CF424A;
       --blush: #FFB8C8;
       --gold: #B8965A;
+      /* --gold is decorative only (dots, rules, borders); it fails contrast as
+         text. Anything readable uses --gold-text. */
+      --gold-text: #6E5830;
       --cream: #FBFAF7;
       --surface: #FBFAF7;
       --card: #FBFAF7;
@@ -53,6 +56,7 @@
 
     .route { display: none; flex: 1; min-width: 0; }
     .route.active { display: flex; }
+    [hidden] { display: none !important; }
 
     /* ---- History route ---- */
     #historyView.route.active { display: block; }
@@ -93,7 +97,7 @@
     .ro-revision-row:hover { color: var(--ink); }
     .ro-revision-row.selected { color: var(--ruby); font-weight: 600; }
     .ro-version-banner {
-      font-size: 11.5px; color: var(--gold); background: rgba(184, 150, 90, 0.14); border-radius: 6px;
+      font-size: 11.5px; color: var(--gold-text); background: rgba(184, 150, 90, 0.14); border-radius: 6px;
       padding: 6px 10px; margin-bottom: 12px; display: inline-block;
     }
 
@@ -281,6 +285,8 @@
     .card-title { font-family: 'Manrope', system-ui, sans-serif; font-size: 15px; font-weight: 700; color: var(--ink); margin: 0; }
     .card-subtitle { font-size: 12.5px; color: var(--ink-2); margin-bottom: 14px; }
 
+    .section-body { display: block; }
+
     .empty-state { color: var(--ink-2); font-size: 13px; line-height: 1.6; }
 
     .tabpanel { display: none; }
@@ -400,7 +406,7 @@
       padding: 2px 7px; border-radius: 5px; border: 1px solid transparent; white-space: nowrap;
     }
     .quote-flag.verified { color: var(--ink-2); border-color: var(--border-soft); background: transparent; }
-    .quote-flag.paraphrased { color: var(--gold); border-color: var(--gold); background: rgba(184, 150, 90, 0.09); }
+    .quote-flag.paraphrased { color: var(--gold-text); border-color: var(--gold); background: rgba(184, 150, 90, 0.09); }
     .quote-flag.unsupported { color: var(--accent); border-color: var(--accent); background: rgba(219, 42, 51, 0.07); }
     .quote-flag.unchecked { color: var(--ink-3); border-color: var(--border-soft); background: transparent; }
 
@@ -708,7 +714,7 @@
     </div>
 
     <div id="historyView" class="route">
-      <div id="historyBreadcrumb" class="history-breadcrumb" style="display: none;"></div>
+      <nav id="historyBreadcrumb" class="history-breadcrumb" aria-label="Breadcrumb" hidden></nav>
 
       <!-- The root's title lives inside #historyRoot, not above it: a drill-down
            view renders its own .page-title, and two page titles at once is what
@@ -725,9 +731,9 @@
         <div id="historyPatientList"></div>
       </div>
 
-      <div id="historyPatientView" style="display: none;"></div>
-      <div id="historyCaseView" style="display: none;"></div>
-      <div id="historyEncounterView" style="display: none;"></div>
+      <div id="historyPatientView" hidden></div>
+      <div id="historyCaseView" hidden></div>
+      <div id="historyEncounterView" hidden></div>
     </div>
   </div>
 
@@ -1058,11 +1064,11 @@
 
     function renderHistoryBreadcrumb() {
       if (historyState.view === "root") {
-        historyBreadcrumbEl.style.display = "none";
+        historyBreadcrumbEl.hidden = true;
         historyBreadcrumbEl.innerHTML = "";
         return;
       }
-      historyBreadcrumbEl.style.display = "block";
+      historyBreadcrumbEl.hidden = false;
       const parts = ['<a data-nav="root">History</a>'];
       if (historyState.view === "patient") {
         parts.push(" / <span>" + escapeHtml(historyState.patient.name) + "</span>");
@@ -1084,8 +1090,35 @@
       });
     }
 
-    function renderHistoryDetailHeader(container, title, subtitle, sectionTitle) {
+    // ---- History views: one skeleton, filled by name ---------------------
+    //
+    // Every History view is the same shape -- a page title, a subtitle, then
+    // named sections -- so the shape is declared once and filled by name.
+    // Building these by appending in document order is what kept putting new
+    // sections in the wrong place: the order a fetch happened to resolve in
+    // decided where its content landed.
+
+    const HISTORY_VIEWS = {
+      root: historyRootEl,
+      patient: historyPatientViewEl,
+      case: historyCaseViewEl,
+      encounter: historyEncounterViewEl,
+    };
+
+    // Each open* function used to hide its siblings by hand, and missed some:
+    // jumping straight to an encounter from the activity feed left the whole
+    // root list on screen above it, so you landed on a page whose title said
+    // "History" and had to scroll past everything to find what you clicked.
+    function showHistoryView(name) {
+      for (const [key, el] of Object.entries(HISTORY_VIEWS)) el.hidden = key !== name;
+    }
+
+    // sections is [{ name, title?, content? }] in the order they should appear.
+    // Returns { <name>: element } so a slow fetch fills its own slot whenever
+    // it lands, rather than appending after whatever finished first.
+    function renderDetailView(container, { title, subtitle, sections = [] }) {
       container.innerHTML = "";
+
       const h1 = document.createElement("h1");
       h1.className = "page-title";
       h1.textContent = title;
@@ -1096,14 +1129,80 @@
       sub.textContent = subtitle;
       container.appendChild(sub);
 
-      const section = document.createElement("div");
-      section.className = "section-title";
-      section.textContent = sectionTitle;
-      container.appendChild(section);
+      const slots = {};
+      for (const section of sections) {
+        if (section.title) {
+          const heading = document.createElement("div");
+          heading.className = "section-title";
+          heading.textContent = section.title;
+          container.appendChild(heading);
+        }
+        const body = document.createElement("div");
+        body.className = "section-body";
+        body.dataset.slot = section.name;
+        if (section.content) body.appendChild(section.content);
+        container.appendChild(body);
+        slots[section.name] = body;
+      }
+      return slots;
+    }
 
-      const listEl = document.createElement("div");
-      container.appendChild(listEl);
-      return listEl;
+    // One tab component, used wherever content is tabbed. Returns the element
+    // to drop into a slot plus the panel each tab writes into.
+    function buildTabbedPanels(names, { label }) {
+      const wrap = document.createElement("div");
+      const strip = document.createElement("div");
+      strip.className = "tabs";
+      strip.setAttribute("role", "tablist");
+      strip.setAttribute("aria-label", label);
+      const panels = {};
+      const buttons = {};
+
+      const select = (name) => {
+        for (const [n, btn] of Object.entries(buttons)) {
+          const on = n === name;
+          btn.classList.toggle("active", on);
+          btn.setAttribute("aria-selected", String(on));
+          btn.tabIndex = on ? 0 : -1;
+          panels[n].classList.toggle("active", on);
+        }
+      };
+
+      names.forEach((name, i) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "tab";
+        btn.id = `tab-${label}-${name}`;
+        btn.setAttribute("role", "tab");
+        btn.setAttribute("aria-controls", `panel-${label}-${name}`);
+        btn.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+        btn.addEventListener("click", () => select(name));
+        // Arrow keys move between tabs, which is what a tablist is expected
+        // to do once it announces itself as one.
+        btn.addEventListener("keydown", (e) => {
+          const delta = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+          if (!delta) return;
+          e.preventDefault();
+          const next = names[(i + delta + names.length) % names.length];
+          select(next);
+          buttons[next].focus();
+        });
+        strip.appendChild(btn);
+        buttons[name] = btn;
+
+        const panel = document.createElement("div");
+        panel.className = "tabpanel";
+        panel.id = `panel-${label}-${name}`;
+        panel.setAttribute("role", "tabpanel");
+        panel.setAttribute("aria-labelledby", btn.id);
+        panel.appendChild(emptyState("Loading..."));
+        panels[name] = panel;
+        wrap.appendChild(panel);
+      });
+
+      wrap.insertBefore(strip, wrap.firstChild);
+      select(names[0]);
+      return { element: wrap, panels };
     }
 
     function sortCasesOpenFirst(cases) {
@@ -1154,18 +1253,14 @@
       historyState = { view: "patient", patient };
       pushHistoryState({ route: "history", view: "patient", patient });
       renderHistoryBreadcrumb();
-      historyRootEl.style.display = "none";
-      historyCaseViewEl.style.display = "none";
-      historyEncounterViewEl.style.display = "none";
-      historyPatientViewEl.style.display = "block";
+      showHistoryView("patient");
 
-      const listEl = renderHistoryDetailHeader(
-        historyPatientViewEl,
-        patient.name,
-        `${patient.patientId} · DOB ${patient.dateOfBirth || "unknown"}`,
-        "Cases"
-      );
-      fetchHistoryList(listEl, `/api/patients/${encodeURIComponent(patient.patientId)}/cases`, {
+      const slots = renderDetailView(historyPatientViewEl, {
+        title: patient.name,
+        subtitle: `${patient.patientId} · DOB ${patient.dateOfBirth || "unknown"}`,
+        sections: [{ name: "cases", title: "Cases" }],
+      });
+      fetchHistoryList(slots.cases, `/api/patients/${encodeURIComponent(patient.patientId)}/cases`, {
         renderRow: (c) => renderCaseRow(patient, c),
         emptyMessage: "No cases yet for this patient.",
         onData: (data) => sortCasesOpenFirst(data.cases || []),
@@ -1212,19 +1307,16 @@
       historyState = { view: "case", patient, case: caseObj };
       pushHistoryState({ route: "history", view: "case", patient, case: caseObj });
       renderHistoryBreadcrumb();
-      historyPatientViewEl.style.display = "none";
-      historyEncounterViewEl.style.display = "none";
-      historyCaseViewEl.style.display = "block";
+      showHistoryView("case");
 
       const statusNote =
         caseObj.status === "closed" && caseObj.closedAt ? `closed ${formatActivityDate(caseObj.closedAt)}` : caseObj.status;
-      const listEl = renderHistoryDetailHeader(
-        historyCaseViewEl,
-        caseObj.title || caseObj.caseId,
-        `${caseObj.caseId} · ${patient.name} · ${statusNote}`,
-        "Encounters"
-      );
-      fetchHistoryList(listEl, `/api/cases/${encodeURIComponent(caseObj.caseId)}/encounters`, {
+      const slots = renderDetailView(historyCaseViewEl, {
+        title: caseObj.title || caseObj.caseId,
+        subtitle: `${caseObj.caseId} · ${patient.name} · ${statusNote}`,
+        sections: [{ name: "encounters", title: "Encounters" }],
+      });
+      fetchHistoryList(slots.encounters, `/api/cases/${encodeURIComponent(caseObj.caseId)}/encounters`, {
         renderRow: (e) => renderEncounterRow(patient, caseObj, e),
         emptyMessage: "No encounters recorded for this case yet.",
         onData: (data) => data.encounters || [],
@@ -1486,56 +1578,24 @@
       historyState = { view: "encounter", patient, case: caseObj, encounter };
       pushHistoryState({ route: "history", view: "encounter", patient, case: caseObj, encounter });
       renderHistoryBreadcrumb();
-      historyCaseViewEl.style.display = "none";
-      historyEncounterViewEl.style.display = "block";
+      showHistoryView("encounter");
 
-      historyEncounterViewEl.innerHTML = "";
-      const h1 = document.createElement("h1");
-      h1.className = "page-title";
-      h1.textContent = `Encounter ${encounter.encounterId}`;
-      historyEncounterViewEl.appendChild(h1);
+      const artifacts = buildTabbedPanels(READ_TABS, { label: "encounter" });
+      const panelEls = artifacts.panels;
 
-      const sub = document.createElement("div");
-      sub.className = "page-subtitle";
-      sub.textContent =
-        `${caseObj.title || caseObj.caseId} · ${patient.name} · ${encounter.status} · ` +
-        (formatActivityDate(encounter.occurredAt) || "date unknown");
-      historyEncounterViewEl.appendChild(sub);
+      const slots = renderDetailView(historyEncounterViewEl, {
+        title: `Encounter ${encounter.encounterId}`,
+        subtitle:
+          `${caseObj.title || caseObj.caseId} · ${patient.name} · ${encounter.status} · ` +
+          (formatActivityDate(encounter.occurredAt) || "date unknown"),
+        sections: [
+          // No title: the tab strip names this section itself.
+          { name: "artifacts", content: artifacts.element },
+          { name: "claims", title: "Claims and payer response" },
+        ],
+      });
 
-      const tabsRow = document.createElement("div");
-      tabsRow.className = "tabs";
-      const panelsWrap = document.createElement("div");
-      const panelEls = {};
-
-      for (const tab of READ_TABS) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "tab" + (tab === "transcript" ? " active" : "");
-        btn.textContent = tab.charAt(0).toUpperCase() + tab.slice(1);
-        btn.addEventListener("click", () => {
-          tabsRow.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
-          btn.classList.add("active");
-          for (const [t, el] of Object.entries(panelEls)) el.classList.toggle("active", t === tab);
-        });
-        tabsRow.appendChild(btn);
-
-        const panel = document.createElement("div");
-        panel.className = "tabpanel" + (tab === "transcript" ? " active" : "");
-        panel.appendChild(emptyState("Loading..."));
-        panelEls[tab] = panel;
-        panelsWrap.appendChild(panel);
-      }
-      historyEncounterViewEl.appendChild(tabsRow);
-      historyEncounterViewEl.appendChild(panelsWrap);
-
-      const claimsSection = document.createElement("div");
-      claimsSection.className = "section-title";
-      claimsSection.textContent = "Claims and payer response";
-      historyEncounterViewEl.appendChild(claimsSection);
-
-      const claimsEl = document.createElement("div");
-      historyEncounterViewEl.appendChild(claimsEl);
-      loadEncounterClaims(claimsEl, encounter, caseObj);
+      loadEncounterClaims(slots.claims, encounter, caseObj);
 
       fetch(`/api/encounters/${encodeURIComponent(encounter.encounterId)}/artifacts`)
         .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
@@ -2096,10 +2156,7 @@
       historyState = { view: "root" };
       pushHistoryState({ route: "history", view: "root" });
       renderHistoryBreadcrumb();
-      historyPatientViewEl.style.display = "none";
-      historyCaseViewEl.style.display = "none";
-      historyEncounterViewEl.style.display = "none";
-      historyRootEl.style.display = "block";
+      showHistoryView("root");
       loadActivity();
       loadHistoryPatients();
     }
