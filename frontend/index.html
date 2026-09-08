@@ -240,6 +240,23 @@
     }
     #startClaimBtn { align-self: flex-start; margin-top: 8px; }
 
+    /* ---- Prepare claim: runs the whole pipeline in one step ---- */
+    #prepareClaimBar {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 18px 22px; margin-bottom: 22px; border-radius: 12px;
+      background: linear-gradient(135deg, var(--plum), var(--ruby)); color: var(--cream);
+    }
+    #prepareClaimText { display: flex; flex-direction: column; gap: 2px; }
+    #prepareClaimTitle { font-size: 15px; font-weight: 700; }
+    #prepareClaimSubtitle { font-size: 12px; color: rgba(251, 250, 247, 0.8); }
+    #prepareClaimBtn {
+      flex: none; font-size: 14px; font-weight: 700; padding: 13px 24px; border-radius: 10px;
+      background: var(--cream); color: var(--ruby); border: none;
+    }
+    #prepareClaimBtn:hover:not(:disabled) { background: #fff; }
+    #prepareClaimBtn:disabled { opacity: 0.6; cursor: default; }
+    #prepareClaimStatus.status { margin: 10px 0 22px; }
+
     /* ---- Main content ---- */
     #main { flex: 1; min-width: 0; padding: 32px 44px; max-width: 900px; }
     .panel { display: none; }
@@ -555,6 +572,15 @@
     </div>
 
     <div id="main">
+      <div id="prepareClaimBar">
+        <div id="prepareClaimText">
+          <div id="prepareClaimTitle">Prepare claim</div>
+          <div id="prepareClaimSubtitle">Runs the transcript through extraction, coding, and claim population in one step.</div>
+        </div>
+        <button id="prepareClaimBtn" type="button">Prepare claim →</button>
+      </div>
+      <div id="prepareClaimStatus" class="status"></div>
+
       <div id="patientCaseBar">
         <span id="patientCaseLabel">No patient selected -- will save under "unidentified patient" once you extract facts.</span>
         <div style="display: flex; gap: 8px;">
@@ -2076,6 +2102,9 @@
       claim: document.getElementById("panelClaim"),
     };
 
+    const prepareClaimBtn = document.getElementById("prepareClaimBtn");
+    const prepareClaimStatusEl = document.getElementById("prepareClaimStatus");
+
     const transcriptEl = document.getElementById("transcript");
     const cleanupBtn = document.getElementById("cleanupBtn");
     const cleanupStatusEl = document.getElementById("cleanupStatus");
@@ -2213,12 +2242,12 @@
       }
     });
 
-    extractBtn.addEventListener("click", async () => {
+    async function runExtract() {
       const transcript = state.transcript.trim();
       if (!transcript) {
         extractStatusEl.textContent = "Paste a transcript first.";
         extractStatusEl.className = "status error";
-        return;
+        return false;
       }
 
       extractBtn.disabled = true;
@@ -2236,7 +2265,7 @@
         if (!res.ok) {
           extractStatusEl.textContent = data.error || "Extraction failed.";
           extractStatusEl.className = "status error";
-          return;
+          return false;
         }
 
         state.facts = data.facts;
@@ -2260,14 +2289,18 @@
         extractStatusEl.textContent = "Done — see the Facts tab.";
         extractStatusEl.className = "status";
         renderNav();
+        return true;
       } catch (err) {
         console.error("Extract error:", err);
         extractStatusEl.textContent = "Something went wrong: " + err.message;
         extractStatusEl.className = "status error";
+        return false;
       } finally {
         extractBtn.disabled = false;
       }
-    });
+    }
+
+    extractBtn.addEventListener("click", () => runExtract());
 
     // ---- Mic capture: tap to talk, tap again fast to lock hands-free ----
     // (Wispr Flow-style control: one button, no modifier keys.)
@@ -2929,6 +2962,61 @@
     }
 
     populateClaimBtn.addEventListener("click", () => runPopulateClaim());
+
+    // ---- Prepare claim: the whole pipeline, one click, no tab-hopping ----
+
+    async function runPrepareClaim() {
+      const transcript = state.transcript.trim();
+      if (!transcript) {
+        prepareClaimStatusEl.textContent = "Paste or dictate a transcript first.";
+        prepareClaimStatusEl.className = "status error";
+        return;
+      }
+
+      prepareClaimBtn.disabled = true;
+      prepareClaimStatusEl.textContent = "Extracting clinical facts...";
+      prepareClaimStatusEl.className = "status";
+
+      // Each step re-runs on whatever the previous step just produced, the
+      // same as clicking through the tabs by hand -- this only removes the
+      // clicking, not the review. Landing on the Claim tab still needs a
+      // human to look it over before anything is submitted to a payer.
+      const extracted = await runExtract();
+      if (!extracted) {
+        prepareClaimStatusEl.textContent = extractStatusEl.textContent || "Extraction failed.";
+        prepareClaimStatusEl.className = "status error";
+        showTab("transcript");
+        prepareClaimBtn.disabled = false;
+        return;
+      }
+
+      prepareClaimStatusEl.textContent = "Suggesting codes...";
+      const coded = await runSuggestCodes();
+      if (!coded) {
+        prepareClaimStatusEl.textContent = codesStatusEl.textContent || "Code suggestion failed.";
+        prepareClaimStatusEl.className = "status error";
+        showTab("codes");
+        prepareClaimBtn.disabled = false;
+        return;
+      }
+
+      prepareClaimStatusEl.textContent = "Populating the claim...";
+      const populated = await runPopulateClaim();
+      if (!populated) {
+        prepareClaimStatusEl.textContent = claimStatusEl.textContent || "Claim population failed.";
+        prepareClaimStatusEl.className = "status error";
+        showTab("codes");
+        prepareClaimBtn.disabled = false;
+        return;
+      }
+
+      prepareClaimStatusEl.textContent = "Done -- claim prepared below. Review it before submitting.";
+      prepareClaimStatusEl.className = "status";
+      showTab("claim");
+      prepareClaimBtn.disabled = false;
+    }
+
+    prepareClaimBtn.addEventListener("click", () => runPrepareClaim());
 
     function setClaimEditable(editable) {
       claimFormEl.querySelectorAll("input, textarea, button").forEach((el) => (el.disabled = !editable));
