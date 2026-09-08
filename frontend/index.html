@@ -754,7 +754,7 @@
       history: document.getElementById("historyView"),
     };
 
-    function showRoute(route) {
+    function activateRoute(route) {
       currentRoute = route;
       for (const [key, el] of Object.entries(routes)) {
         el.classList.toggle("active", key === route);
@@ -762,11 +762,47 @@
       for (const btn of railButtons) {
         btn.classList.toggle("active", btn.dataset.route === route);
       }
+    }
+
+    function showRoute(route) {
+      activateRoute(route);
       if (route === "history") showHistoryRoot();
     }
 
+    // The browser's own back/forward buttons only know about entries this
+    // page has actually pushed -- without this, "back" from a drilled-down
+    // History view leaves the app entirely instead of stepping up one level.
+    // Suppressed while replaying a popstate so going back doesn't itself
+    // push a new (duplicate) forward entry.
+    let suppressHistoryPush = false;
+    function pushHistoryState(navState) {
+      if (!suppressHistoryPush) history.pushState(navState, "");
+    }
+
+    window.addEventListener("popstate", (event) => {
+      const navState = event.state || { route: "new-claim" };
+      suppressHistoryPush = true;
+      try {
+        if (navState.route === "history") {
+          activateRoute("history");
+          if (navState.view === "patient" && navState.patient) openHistoryPatient(navState.patient);
+          else if (navState.view === "case" && navState.patient && navState.case) openHistoryCase(navState.patient, navState.case);
+          else if (navState.view === "encounter" && navState.patient && navState.case && navState.encounter) {
+            openHistoryEncounter(navState.patient, navState.case, navState.encounter);
+          } else showHistoryRoot();
+        } else {
+          activateRoute("new-claim");
+        }
+      } finally {
+        suppressHistoryPush = false;
+      }
+    });
+
     for (const btn of railButtons) {
-      btn.addEventListener("click", () => showRoute(btn.dataset.route));
+      btn.addEventListener("click", () => {
+        showRoute(btn.dataset.route);
+        if (btn.dataset.route === "new-claim") pushHistoryState({ route: "new-claim" });
+      });
     }
 
     const historyActivityEl = document.getElementById("historyActivity");
@@ -1041,6 +1077,7 @@
 
     function openHistoryPatient(patient) {
       historyState = { view: "patient", patient };
+      pushHistoryState({ route: "history", view: "patient", patient });
       renderHistoryBreadcrumb();
       historyRootEl.style.display = "none";
       historyCaseViewEl.style.display = "none";
@@ -1098,6 +1135,7 @@
 
     function openHistoryCase(patient, caseObj) {
       historyState = { view: "case", patient, case: caseObj };
+      pushHistoryState({ route: "history", view: "case", patient, case: caseObj });
       renderHistoryBreadcrumb();
       historyPatientViewEl.style.display = "none";
       historyEncounterViewEl.style.display = "none";
@@ -1373,6 +1411,7 @@
 
     function openHistoryEncounter(patient, caseObj, encounter) {
       historyState = { view: "encounter", patient, case: caseObj, encounter };
+      pushHistoryState({ route: "history", view: "encounter", patient, case: caseObj, encounter });
       renderHistoryBreadcrumb();
       historyCaseViewEl.style.display = "none";
       historyEncounterViewEl.style.display = "block";
@@ -1983,6 +2022,7 @@
 
     function showHistoryRoot() {
       historyState = { view: "root" };
+      pushHistoryState({ route: "history", view: "root" });
       renderHistoryBreadcrumb();
       historyPatientViewEl.style.display = "none";
       historyCaseViewEl.style.display = "none";
@@ -3487,6 +3527,7 @@
     applyReviewUiState();
     initIntake();
     showTab("transcript");
+    history.replaceState({ route: "new-claim" }, "");
     showRoute("new-claim");
   </script>
 </body>
