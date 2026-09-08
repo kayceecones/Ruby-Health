@@ -1,33 +1,67 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseRemittanceClaim } from "../src/pipeline/parseRemittance.js";
+import { parseRemittance } from "../src/pipeline/parseRemittance.js";
 import { analyzeRemittance } from "../src/pipeline/analyzeRemittance.js";
 import { loadAdjustmentCodes } from "../../reference/loadAdjustmentCodes.mjs";
 
 const codes = await loadAdjustmentCodes();
 
-function analyze(claim, options = {}) {
-  return analyzeRemittance(parseRemittanceClaim(claim), codes, { today: "2026-09-08", ...options });
+// Builds a synthetic 835 in the shape confirmed against a real Stedi Test
+// Payer response (see parseRemittance.js's header comment and
+// parseRemittance.test.js's REAL_STEDI_ERA). All data here is synthetic --
+// see reference/README.md.
+function buildEra({
+  statusCode = "1",
+  billed = "100",
+  paid = "0",
+  patientResponsibility = "0",
+  payerClaimControlNumber = "2026250012345",
+  remittanceDate = "20260901",
+  claimAdjustments = [],
+  lines = [{ code: "99213", billed: "100", paid: "0", adjustments: [] }],
+} = {}) {
+  const casSegment = (adj) => `CAS*${adj.groupCode}*${adj.reasonCode}*${adj.amount}~`;
+
+  const lineSegments = lines.flatMap((l) => [
+    `SVC*HC\`${l.code}*${l.billed}*${l.paid}**1*HC\`${l.code}*1~`,
+    `DTM*472*${remittanceDate}~`,
+    ...(l.adjustments || []).map(casSegment),
+    ...(l.remarkCodes || []).map((code) => `LQ*HE*${code}~`),
+  ]);
+
+  return [
+    "ISA*00*          *00*          *ZZ*STEDITEST      *ZZ*134129016687   *260908*1907*^*00501*000000010*0*T*`~",
+    "GS*HP*STEDITEST*134129016687*20260908*190744*10*X*005010X221A1~",
+    "ST*835*0001~",
+    `BPR*I*${paid}*C*ACH************${remittanceDate}~`,
+    "TRN*1*trace*1234567890~",
+    `DTM*405*${remittanceDate}~`,
+    "N1*PR*Stedi Test Payer*XV*STEDI~",
+    "LX*1~",
+    `CLP*ruby-1*${statusCode}*${billed}*${paid}*${patientResponsibility}*ZZ*${payerClaimControlNumber}*11*1~`,
+    ...claimAdjustments.map(casSegment),
+    `DTM*232*${remittanceDate}~`,
+    ...lineSegments,
+    "SE*20*0001~",
+    "GE*1*10~",
+    "IEA*1*000000010~",
+  ].join("\n");
 }
 
-// All synthetic. See reference/README.md -- a real 835 must never land here.
-function deniedFor(reasonCode, { groupCode = "CO", amount = "150.00", code = "99213" } = {}) {
-  return {
-    payerClaimControlNumber: "2026250012345",
-    claimStatusCode: 4,
-    productionDate: "2026-09-01",
-    totalClaimChargeAmount: amount,
-    claimPaymentAmount: "0.00",
-    serviceLines: [
-      {
-        procedureCode: code,
-        lineItemChargeAmount: amount,
-        lineItemProviderPaymentAmount: "0.00",
-        adjustments: [{ adjustmentGroupCode: groupCode, adjustmentReasonCode: reasonCode, adjustmentAmount: amount }],
-      },
-    ],
-  };
+function analyze(x12, options = {}) {
+  const [claim] = parseRemittance(x12);
+  return analyzeRemittance(claim, codes, { today: "2026-09-08", ...options });
+}
+
+function deniedFor(reasonCode, { groupCode = "CO", amount = "150", code = "99213", payerClaimControlNumber } = {}) {
+  return buildEra({
+    statusCode: "4",
+    billed: amount,
+    paid: "0",
+    ...(payerClaimControlNumber !== undefined ? { payerClaimControlNumber } : {}),
+    lines: [{ code, billed: amount, paid: "0", adjustments: [{ groupCode, reasonCode, amount }] }],
+  });
 }
 
 test("a medical-necessity denial routes to appeal and counts as money at risk", () => {
@@ -56,19 +90,14 @@ test("a deductible is billed to the patient, not treated as recoverable", () => 
 });
 
 test("a contractual write-down on a paid claim needs no action", () => {
-  const result = analyze({
-    claimStatusCode: 1,
-    totalClaimChargeAmount: "200.00",
-    claimPaymentAmount: "170.00",
-    serviceLines: [
-      {
-        procedureCode: "99213",
-        lineItemChargeAmount: "200.00",
-        lineItemProviderPaymentAmount: "170.00",
-        adjustments: [{ adjustmentGroupCode: "CO", adjustmentReasonCode: "45", adjustmentAmount: "30.00" }],
-      },
-    ],
-  });
+  const result = analyze(
+    buildEra({
+      statusCode: "1",
+      billed: "200",
+      paid: "170",
+      lines: [{ code: "99213", billed: "200", paid: "170", adjustments: [{ groupCode: "CO", reasonCode: "45", amount: "30" }] }],
+    })
+  );
 
   assert.equal(result.recommendedRoute, "no_action");
   assert.equal(result.money.contractualWriteOff, 30);
@@ -103,26 +132,17 @@ test("an unrecognised reason code is surfaced raw and sent to a human", () => {
 });
 
 test("the headline route follows the biggest recoverable amount", () => {
-  const result = analyze({
-    payerClaimControlNumber: "2026250012345",
-    claimStatusCode: 4,
-    totalClaimChargeAmount: "400.00",
-    claimPaymentAmount: "0.00",
-    serviceLines: [
-      {
-        procedureCode: "99213",
-        lineItemChargeAmount: "100.00",
-        lineItemProviderPaymentAmount: "0.00",
-        adjustments: [{ adjustmentGroupCode: "CO", adjustmentReasonCode: "11", adjustmentAmount: "100.00" }],
-      },
-      {
-        procedureCode: "20610",
-        lineItemChargeAmount: "300.00",
-        lineItemProviderPaymentAmount: "0.00",
-        adjustments: [{ adjustmentGroupCode: "CO", adjustmentReasonCode: "50", adjustmentAmount: "300.00" }],
-      },
-    ],
-  });
+  const result = analyze(
+    buildEra({
+      statusCode: "4",
+      billed: "400",
+      paid: "0",
+      lines: [
+        { code: "99213", billed: "100", paid: "0", adjustments: [{ groupCode: "CO", reasonCode: "11", amount: "100" }] },
+        { code: "20610", billed: "300", paid: "0", adjustments: [{ groupCode: "CO", reasonCode: "50", amount: "300" }] },
+      ],
+    })
+  );
 
   // Both a coding fix and an appeal are on the table; the appeal is worth 3x.
   assert.equal(result.recommendedRoute, "appeal");
@@ -133,7 +153,7 @@ test("the headline route follows the biggest recoverable amount", () => {
 test("says up front whether a corrected claim can even be filed", () => {
   assert.equal(analyze(deniedFor("11")).canFileCorrectedClaim, true);
 
-  const noControlNumber = analyze({ ...deniedFor("11"), payerClaimControlNumber: undefined });
+  const noControlNumber = analyze(deniedFor("11", { payerClaimControlNumber: "" }));
   assert.equal(noControlNumber.canFileCorrectedClaim, false);
   assert.equal(noControlNumber.payerClaimControlNumber, null);
 });
@@ -166,18 +186,22 @@ test("a billed line the payer never ruled on is caught separately", () => {
 });
 
 test("remark codes are resolved alongside the reason codes", () => {
-  const result = analyze({
-    ...deniedFor("50"),
-    serviceLines: [
-      {
-        procedureCode: "99213",
-        lineItemChargeAmount: "150.00",
-        lineItemProviderPaymentAmount: "0.00",
-        adjustments: [{ adjustmentGroupCode: "CO", adjustmentReasonCode: "50", adjustmentAmount: "150.00" }],
-        remarkCodes: ["N115", "ZZ999"],
-      },
-    ],
-  });
+  const result = analyze(
+    buildEra({
+      statusCode: "4",
+      billed: "150",
+      paid: "0",
+      lines: [
+        {
+          code: "99213",
+          billed: "150",
+          paid: "0",
+          adjustments: [{ groupCode: "CO", reasonCode: "50", amount: "150" }],
+          remarkCodes: ["N115", "ZZ999"],
+        },
+      ],
+    })
+  );
 
   assert.equal(result.remarks.length, 2);
   assert.equal(result.remarks[0].known, true);

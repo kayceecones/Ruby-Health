@@ -482,8 +482,8 @@ app.post("/api/claims/:claimId/remittance", async (req, res) => {
   if (!requireRepository(res)) return;
   const { remittance, dateOfService, submittedClaim } = req.body || {};
 
-  if (!remittance || typeof remittance !== "object") {
-    return res.status(400).json({ error: "Request body must include a 'remittance' object (the payer's 835 payload)." });
+  if (!remittance) {
+    return res.status(400).json({ error: "Request body must include a 'remittance' field (the payer's raw 835 EDI document)." });
   }
 
   try {

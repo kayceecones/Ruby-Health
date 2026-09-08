@@ -1,21 +1,23 @@
-// Turns a payer's 835 remittance into Ruby's own adjudication shape.
+// Turns a payer's 835 remittance advice into Ruby's own adjudication shape.
 //
 // Deterministic. No model call, no lookups, no judgement -- this only restates
 // what the payer sent in a shape the rest of the app can work with. Explaining
 // the reason codes is analyzeRemittance.js's job, and what to *do* about them
 // is a decision that comes after that.
 //
-// ---------------------------------------------------------------------------
-// UNVERIFIED AGAINST A LIVE PAYLOAD.
-//
-// The 835 semantics below are the standard ones (CLP for the claim, SVC for a
-// service line, CAS for adjustments), but nobody has yet run a claim through
-// Stedi's sandbox and looked at what actually comes back -- that needs a real
-// STEDI_API_KEY and network access to Stedi, neither of which a cloud session
-// has. Every field-name guess is therefore funnelled through FIELDS below, so
-// correcting this against a real remittance is an edit in one place rather
-// than a rewrite.
-// ---------------------------------------------------------------------------
+// The input is a raw X12 835 document (a string), not JSON. That was
+// confirmed against Stedi's real sandbox on 2026-09-08: their "835 ERAs"
+// view hands back the actual EDI text, not a vendor-shaped JSON payload --
+// which is better ground to build on than a guess would have been, since
+// X12 835 is a fixed national standard (HIPAA 005010X221A1) rather than one
+// company's schema that could change under us. The segment/element
+// positions below are read directly off a real Stedi Test Payer remittance
+// for a fully-paid claim; a real *denial* has never been seen (Stedi's test
+// payer only ever pays in full or sends nothing at all -- see
+// docs/mvp-v1-build-plan.html's sibling denial-loop notes), so the CAS
+// (adjustment) and LQ (remark code) parsing below follows the published
+// 835 spec rather than a confirmed real denied example. If a real denial
+// payload ever turns up looking different, this is the one file to fix.
 
 export class RemittanceParseError extends Error {
   constructor(message) {
@@ -25,7 +27,8 @@ export class RemittanceParseError extends Error {
 }
 
 // CLP02. The payer's own verdict on the claim, which beats anything we could
-// infer from the amounts.
+// infer from the amounts. Code "1" is confirmed against a real Stedi
+// response (rendered in their UI as "Processed as primary").
 const CLAIM_STATUS_CODES = {
   1: "paid", // processed as primary
   2: "paid", // processed as secondary
@@ -39,183 +42,206 @@ const CLAIM_STATUS_CODES = {
   25: "predetermination",
 };
 
-// Every guess about what Stedi calls a field lives here. First key that is
-// actually present wins.
-const FIELDS = {
-  claims: ["claims", "claimPayments", "claimPaymentInfo", "payments"],
-  lines: ["serviceLines", "services", "serviceLineInfo", "lines"],
-  claimAdjustments: ["claimAdjustments", "adjustments", "claimLevelAdjustments"],
-  lineAdjustments: ["serviceAdjustments", "adjustments", "lineAdjustments"],
-  controlNumber: ["payerClaimControlNumber", "claimControlNumber", "payerControlNumber", "icn", "dcn"],
-  claimStatusCode: ["claimStatusCode", "claimStatus", "statusCode"],
-  billed: ["totalClaimChargeAmount", "claimChargeAmount", "chargeAmount", "billedAmount", "submittedCharges"],
-  paid: ["claimPaymentAmount", "paymentAmount", "paidAmount"],
-  patientResponsibility: ["patientResponsibilityAmount", "patientResponsibility", "patientLiability"],
-  procedureCode: ["procedureCode", "serviceCode", "adjudicatedProcedureCode", "code"],
-  lineBilled: ["lineItemChargeAmount", "chargeAmount", "billedAmount", "submittedCharge"],
-  linePaid: ["lineItemProviderPaymentAmount", "paymentAmount", "paidAmount"],
-  units: ["unitsOfServicePaidCount", "units", "quantity"],
-  modifiers: ["procedureModifiers", "modifiers"],
-  groupCode: ["adjustmentGroupCode", "groupCode", "claimAdjustmentGroupCode"],
-  reasonCode: ["adjustmentReasonCode", "reasonCode", "claimAdjustmentReasonCode"],
-  adjustmentAmount: ["adjustmentAmount", "amount", "monetaryAmount"],
-  remarkCodes: ["remarkCodes", "remittanceRemarkCodes", "healthCareRemarkCodes", "lqCodes"],
-  payerName: ["payerName", "payer", "payerIdentification"],
-  remittanceDate: ["productionDate", "checkIssueOrEftEffectiveDate", "paymentDate", "effectiveDate"],
-  traceNumber: ["checkOrEftTraceNumber", "traceNumber", "checkNumber"],
-};
-
-function pick(source, names) {
-  if (!source || typeof source !== "object") return undefined;
-  for (const name of names) {
-    if (source[name] !== undefined && source[name] !== null && source[name] !== "") return source[name];
-  }
-  return undefined;
-}
-
-// 835 amounts arrive as decimal dollars, sometimes as strings. Rounding to
-// cents on the way in keeps float drift out of every later comparison --
-// "paid < billed" deciding a claim was underpaid by 0.000000001 would be a
-// silly way to open an appeal.
+// 835 amounts arrive as plain decimal strings. Rounding to cents on the way
+// in keeps float drift out of every later comparison -- "paid < billed"
+// deciding a claim was underpaid by 0.000000001 would be a silly way to open
+// an appeal.
 export function money(value) {
   const n = typeof value === "number" ? value : parseFloat(String(value ?? "").replace(/[$,\s]/g, ""));
   if (!Number.isFinite(n)) return 0;
   return Math.round(n * 100) / 100;
 }
 
-function asArray(value) {
-  if (value === undefined || value === null) return [];
-  return Array.isArray(value) ? value : [value];
+function formatX12Date(raw) {
+  const s = String(raw ?? "");
+  return /^\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : null;
 }
 
-// One CAS segment carries a group code and up to six reason/amount pairs. Some
-// representations flatten that into one object per pair, others nest the pairs
-// -- accept both rather than assuming.
-function parseAdjustments(raw) {
-  const out = [];
-  for (const entry of asArray(raw)) {
-    if (!entry || typeof entry !== "object") continue;
-    const groupCode = String(pick(entry, FIELDS.groupCode) ?? "").toUpperCase();
-
-    const nested = asArray(entry.adjustmentDetails || entry.details || entry.reasons);
-    if (nested.length > 0) {
-      for (const detail of nested) {
-        out.push({
-          groupCode,
-          reasonCode: String(pick(detail, FIELDS.reasonCode) ?? ""),
-          amount: money(pick(detail, FIELDS.adjustmentAmount)),
-        });
-      }
-      continue;
-    }
-
-    out.push({
-      groupCode,
-      reasonCode: String(pick(entry, FIELDS.reasonCode) ?? ""),
-      amount: money(pick(entry, FIELDS.adjustmentAmount)),
-    });
+// The ISA segment is the one place X12 declares its own punctuation, so a
+// document is self-describing rather than assumed to use "*"/"~" -- Stedi's
+// own remittances use "`" as the component separator, not the ":" seen in
+// most textbook examples, which is exactly why this reads it off the
+// document instead of hardcoding a guess.
+function detectDelimiters(text) {
+  if (text.slice(0, 3) !== "ISA") {
+    throw new RemittanceParseError("Not an X12 document -- expected it to start with an ISA segment.");
   }
-  return out.filter((a) => a.reasonCode);
+  const elementSep = text[3];
+  // ISA01-ISA15 are 15 elements; splitting what follows "ISA<sep>" by that
+  // separator leaves ISA16 (always exactly one character: the component
+  // separator) fused to the segment terminator and everything after it.
+  const parts = text.slice(4).split(elementSep);
+  if (parts.length < 16) {
+    throw new RemittanceParseError("Malformed ISA segment -- expected 16 elements.");
+  }
+  const isa16Plus = parts[15];
+  return { elementSep, componentSep: isa16Plus[0], segmentTerm: isa16Plus[1] };
 }
 
-function parseLine(raw) {
-  return {
-    procedureCode: String(pick(raw, FIELDS.procedureCode) ?? ""),
-    modifiers: asArray(pick(raw, FIELDS.modifiers)).map((m) => String(m)),
-    units: Number(pick(raw, FIELDS.units) ?? 1) || 1,
-    billed: money(pick(raw, FIELDS.lineBilled)),
-    paid: money(pick(raw, FIELDS.linePaid)),
-    adjustments: parseAdjustments(pick(raw, FIELDS.lineAdjustments)),
-    remarkCodes: asArray(pick(raw, FIELDS.remarkCodes)).map((c) => String(c)),
-  };
+function splitSegments(text, elementSep, segmentTerm) {
+  return text
+    .split(segmentTerm)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => s.split(elementSep));
 }
 
-// The payer's own status code wins when we have one. Inferring from amounts is
-// the fallback, and it is genuinely ambiguous: a claim paid at zero because
-// the whole charge went to the deductible is not "denied", even though the
-// provider received nothing.
+// One CAS segment carries a group code, then up to six (reason, amount,
+// quantity) triples -- quantity is optional and unused here.
+function parseCasTriples(els) {
+  const groupCode = els[0] || "";
+  const adjustments = [];
+  for (let i = 1; i + 1 < els.length; i += 3) {
+    const reasonCode = els[i];
+    if (!reasonCode) break;
+    adjustments.push({ groupCode, reasonCode, amount: money(els[i + 1]) });
+  }
+  return adjustments;
+}
+
+// The payer's own status code wins when we have one. Inferring from amounts
+// is the fallback, and it is genuinely ambiguous: a claim paid at zero
+// because the whole charge went to the deductible is not "denied", even
+// though the provider received nothing.
 function resolveStatus(statusCode, totals, adjustments) {
   const mapped = CLAIM_STATUS_CODES[Number(statusCode)];
   if (mapped) return mapped;
 
   if (totals.paid > 0) return totals.paid < totals.billed ? "partially_paid" : "paid";
-  const allPatientResponsibility =
-    adjustments.length > 0 && adjustments.every((a) => a.groupCode === "PR");
+  const allPatientResponsibility = adjustments.length > 0 && adjustments.every((a) => a.groupCode === "PR");
   if (allPatientResponsibility) return "patient_responsibility";
   return adjustments.length > 0 ? "denied" : "unknown";
 }
 
 /**
- * @param {object} remittance  One claim's worth of 835 data, as returned by
- *   Stedi (or a synthetic fixture in the same shape).
- * @returns {object} Ruby's adjudication shape.
+ * @param {string|{x12: string}} remittance  A raw X12 835 document, or an
+ *   object carrying one under an `x12` property (the shape Stedi's own 837P
+ *   submission responses already use, in case an 835-retrieval API turns out
+ *   to wrap the document the same way).
+ * @returns {object[]} one adjudication per CLP (claim) loop in the document,
+ *   in document order.
  */
-export function parseRemittanceClaim(raw) {
-  if (!raw || typeof raw !== "object") {
-    throw new RemittanceParseError("A remittance claim must be an object.");
+export function parseRemittance(remittance) {
+  const text = typeof remittance === "string" ? remittance : remittance?.x12;
+  if (!text || typeof text !== "string" || !text.trim()) {
+    throw new RemittanceParseError("A remittance document must be a raw X12 835 string (or an object with an 'x12' property).");
   }
 
-  const lines = asArray(pick(raw, FIELDS.lines)).map(parseLine);
-  const claimAdjustments = parseAdjustments(pick(raw, FIELDS.claimAdjustments));
+  const { elementSep, segmentTerm } = detectDelimiters(text.trim());
+  const segments = splitSegments(text.trim(), elementSep, segmentTerm);
 
-  const billed = money(pick(raw, FIELDS.billed));
-  const paid = money(pick(raw, FIELDS.paid));
-  const patientResponsibility = money(pick(raw, FIELDS.patientResponsibility));
+  if (!segments.some((s) => s[0] === "ST" && s[1] === "835")) {
+    throw new RemittanceParseError("Not an 835 remittance advice -- no ST*835 transaction set header found.");
+  }
 
-  const everyAdjustment = [...claimAdjustments, ...lines.flatMap((l) => l.adjustments)];
+  let payerName = null;
+  let remittanceDate = null;
+  let traceNumber = null;
+  let n1Context = null;
 
-  const totals = {
-    billed: billed || money(lines.reduce((sum, l) => sum + l.billed, 0)),
-    paid: paid || money(lines.reduce((sum, l) => sum + l.paid, 0)),
-    patientResponsibility:
-      patientResponsibility ||
-      money(everyAdjustment.filter((a) => a.groupCode === "PR").reduce((sum, a) => sum + a.amount, 0)),
+  const claims = [];
+  let current = null;
+  let currentLine = null;
+
+  const closeLine = () => {
+    if (currentLine) current.lines.push(currentLine);
+    currentLine = null;
+  };
+  const closeClaim = () => {
+    closeLine();
+    if (current) claims.push(current);
+    current = null;
   };
 
-  const statusCode = pick(raw, FIELDS.claimStatusCode);
-
-  return {
-    // Without this a corrected claim cannot be filed -- the payer reads a
-    // resubmission with no control number as a brand-new claim and denies it
-    // as a duplicate. It is the single most important field on the document.
-    payerClaimControlNumber: String(pick(raw, FIELDS.controlNumber) ?? "") || null,
-    claimStatusCode: statusCode === undefined ? null : String(statusCode),
-    status: resolveStatus(statusCode, totals, everyAdjustment),
-    payerName: String(pick(raw, FIELDS.payerName) ?? "") || null,
-    remittanceDate: String(pick(raw, FIELDS.remittanceDate) ?? "") || null,
-    traceNumber: String(pick(raw, FIELDS.traceNumber) ?? "") || null,
-    totals,
-    claimAdjustments,
-    lines,
-    remarkCodes: asArray(pick(raw, FIELDS.remarkCodes)).map((c) => String(c)),
-  };
-}
-
-/**
- * A remittance document can cover many claims at once. Returns one parsed
- * adjudication per claim, in document order.
- */
-export function parseRemittance(document) {
-  if (!document || typeof document !== "object") {
-    throw new RemittanceParseError("A remittance document must be an object.");
+  for (const [id, ...els] of segments) {
+    switch (id) {
+      case "TRN":
+        // TRN02 -- reassociation trace number, present once at the document level.
+        traceNumber = traceNumber || els[1] || null;
+        break;
+      case "DTM":
+        if (els[0] === "405") remittanceDate = formatX12Date(els[1]);
+        break;
+      case "N1":
+        n1Context = els[0];
+        if (els[0] === "PR") payerName = els[1] || payerName;
+        break;
+      case "CLP":
+        closeClaim();
+        current = {
+          patientControlNumber: els[0] || "",
+          claimStatusCode: els[1] || null,
+          totals: { billed: money(els[2]), paid: money(els[3]), patientResponsibility: money(els[4]) },
+          payerClaimControlNumber: els[6] || null,
+          claimAdjustments: [],
+          lines: [],
+          remarkCodes: [],
+        };
+        break;
+      case "CAS": {
+        if (!current) break; // a CAS outside any claim loop isn't one this app tracks
+        const adjustments = parseCasTriples(els);
+        if (currentLine) currentLine.adjustments.push(...adjustments);
+        else current.claimAdjustments.push(...adjustments);
+        break;
+      }
+      case "SVC": {
+        if (!current) break;
+        closeLine();
+        const [qualifier, procCode] = splitComposite(els[0]);
+        currentLine = {
+          procedureCode: procCode || qualifier || "",
+          modifiers: [],
+          units: Number(els[4]) || 1,
+          billed: money(els[1]),
+          paid: money(els[2]),
+          adjustments: [],
+          remarkCodes: [],
+        };
+        break;
+      }
+      case "LQ":
+        // LQ*HE*<remark code> -- a Health Care Remark Code, attached to
+        // whichever loop (claim or the service line just closed/open) it
+        // trails.
+        if (els[0] === "HE" && els[1]) (currentLine || current)?.remarkCodes.push(els[1]);
+        break;
+      default:
+        break;
+    }
   }
-  const claims = asArray(pick(document, FIELDS.claims));
-  if (claims.length === 0) {
-    // A single-claim payload with no wrapper is worth accepting rather than
-    // failing on -- it is exactly what a hand-written fixture looks like.
-    return [parseRemittanceClaim(document)];
-  }
+  closeClaim();
 
-  const payerName = String(pick(document, FIELDS.payerName) ?? "") || null;
-  const remittanceDate = String(pick(document, FIELDS.remittanceDate) ?? "") || null;
-
-  return claims.map((claim) => {
-    const parsed = parseRemittanceClaim(claim);
-    // Payer and date usually sit on the document, not on each claim.
+  return claims.map((c) => {
+    const everyAdjustment = [...c.claimAdjustments, ...c.lines.flatMap((l) => l.adjustments)];
     return {
-      ...parsed,
-      payerName: parsed.payerName || payerName,
-      remittanceDate: parsed.remittanceDate || remittanceDate,
+      payerClaimControlNumber: c.payerClaimControlNumber,
+      claimStatusCode: c.claimStatusCode,
+      status: resolveStatus(c.claimStatusCode, c.totals, everyAdjustment),
+      payerName,
+      remittanceDate,
+      traceNumber,
+      totals: c.totals,
+      claimAdjustments: c.claimAdjustments,
+      lines: c.lines,
+      remarkCodes: c.remarkCodes,
     };
   });
+}
+
+// SVC01 is a composite element: a qualifier ("HC" for HCPCS/CPT) joined to
+// the actual code by the document's component separator. detectDelimiters()
+// already read that separator once; re-deriving it per composite field
+// would be redundant, so this just splits on the one character X12 permits
+// here (":" in the textbook examples, "`" on Stedi's own documents) by
+// trying both -- a composite element never legitimately contains either.
+function splitComposite(value) {
+  const raw = String(value ?? "");
+  for (const sep of [":", "`"]) {
+    if (raw.includes(sep)) {
+      const [qualifier, code] = raw.split(sep);
+      return [qualifier, code];
+    }
+  }
+  return [null, raw];
 }

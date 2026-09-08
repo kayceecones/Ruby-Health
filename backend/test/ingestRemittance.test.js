@@ -31,23 +31,50 @@ function stubRepository({ claim = { claimId: "CL001", status: "submitted", payer
   };
 }
 
-// Synthetic. reference/README.md: a real 835 carries PHI and never lands here.
-const DENIED_REMITTANCE = {
-  payerClaimControlNumber: "2026250012345",
-  claimStatusCode: 4,
-  productionDate: "2026-09-05",
-  payerName: "Sample Payer Insurance",
-  totalClaimChargeAmount: "150.00",
-  claimPaymentAmount: "0.00",
-  serviceLines: [
-    {
-      procedureCode: "99213",
-      lineItemChargeAmount: "150.00",
-      lineItemProviderPaymentAmount: "0.00",
-      adjustments: [{ adjustmentGroupCode: "CO", adjustmentReasonCode: "50", adjustmentAmount: "150.00" }],
-    },
-  ],
-};
+// Builds a synthetic 835 in the shape confirmed against a real Stedi Test
+// Payer response (see parseRemittance.js's header comment). All data here is
+// synthetic -- reference/README.md: a real 835 must never land in this repo.
+function buildEra({
+  statusCode = "4",
+  billed = "150",
+  paid = "0",
+  patientResponsibility = "0",
+  payerClaimControlNumber = "2026250012345",
+  remittanceDate = "20260905",
+  groupCode = "CO",
+  reasonCode = "50",
+  claimCount = 1,
+} = {}) {
+  const claimBlocks = Array.from({ length: claimCount }, (_, i) => {
+    const controlNumber = claimCount > 1 && payerClaimControlNumber ? `${payerClaimControlNumber}-${i + 1}` : payerClaimControlNumber;
+    return [
+      `LX*${i + 1}~`,
+      `CLP*ruby-${i + 1}*${statusCode}*${billed}*${paid}*${patientResponsibility}*ZZ*${controlNumber}*11*1~`,
+      `DTM*232*${remittanceDate}~`,
+      "SVC*HC`99213*" + billed + "*" + paid + "**1*HC`99213*1~",
+      `DTM*472*${remittanceDate}~`,
+      ...(groupCode && reasonCode ? [`CAS*${groupCode}*${reasonCode}*${billed}~`] : []),
+    ].join("\n");
+  }).join("\n");
+
+  return [
+    "ISA*00*          *00*          *ZZ*STEDITEST      *ZZ*134129016687   *260908*1907*^*00501*000000010*0*T*`~",
+    "GS*HP*STEDITEST*134129016687*20260908*190744*10*X*005010X221A1~",
+    "ST*835*0001~",
+    `BPR*I*${paid}*C*ACH************${remittanceDate}~`,
+    "TRN*1*trace*1234567890~",
+    `DTM*405*${remittanceDate}~`,
+    "N1*PR*Sample Payer Insurance*XV*SAMPLE~",
+    claimBlocks,
+    "SE*20*0001~",
+    "GE*1*10~",
+    "IEA*1*000000010~",
+  ].join("\n");
+}
+
+// The exact document build most tests below start from: one denied claim,
+// CO-50 (medical necessity) on its only line.
+const DENIED_REMITTANCE = buildEra();
 
 test("ingesting a denial files the feedback and moves the claim to denied", async () => {
   const repository = stubRepository();
@@ -95,7 +122,7 @@ test("a remittance with no control number does not write an empty one", async ()
     repository,
     adjustmentCodes,
     claimId: "CL001",
-    remittance: { ...DENIED_REMITTANCE, payerClaimControlNumber: undefined },
+    remittance: buildEra({ payerClaimControlNumber: "" }),
   });
 
   assert.equal(repository.calls.controlNumbers.length, 0);
@@ -108,19 +135,18 @@ test("a claim paid to the deductible is accepted, not denied", async () => {
     repository,
     adjustmentCodes,
     claimId: "CL001",
-    remittance: {
+    // Status code 99 is deliberately unmapped, so the claim status comes
+    // entirely from the amounts -- provider paid $0, all of it patient
+    // responsibility.
+    remittance: buildEra({
+      statusCode: "99",
+      billed: "120",
+      paid: "0",
+      patientResponsibility: "120",
       payerClaimControlNumber: "2026250099999",
-      totalClaimChargeAmount: "120.00",
-      claimPaymentAmount: "0.00",
-      serviceLines: [
-        {
-          procedureCode: "99213",
-          lineItemChargeAmount: "120.00",
-          lineItemProviderPaymentAmount: "0.00",
-          adjustments: [{ adjustmentGroupCode: "PR", adjustmentReasonCode: "1", adjustmentAmount: "120.00" }],
-        },
-      ],
-    },
+      groupCode: "PR",
+      reasonCode: "1",
+    }),
   });
 
   // The provider was paid nothing, but this is a bill to send, not a fight.
@@ -156,7 +182,7 @@ test("a multi-claim document files the first and reports the rest", async () => 
     repository,
     adjustmentCodes,
     claimId: "CL001",
-    remittance: { claims: [DENIED_REMITTANCE, DENIED_REMITTANCE, DENIED_REMITTANCE] },
+    remittance: buildEra({ claimCount: 3 }),
   });
 
   assert.equal(result.otherClaimsInDocument, 2);
@@ -176,10 +202,12 @@ test("the raw document is kept alongside our reading of it", async () => {
   await ingestRemittance({ repository, blobStore, adjustmentCodes, claimId: "CL001", remittance: DENIED_REMITTANCE });
 
   assert.equal(stored.length, 1);
-  assert.match(stored[0].key, /^remittance\/CL001-/);
-  assert.equal(repository.calls.feedback[0].storageRef, stored[0].key ? `blob://${stored[0].key}` : null);
-  // The stored bytes are the payer's document, not our parse of it.
-  assert.equal(JSON.parse(stored[0].content.toString()).payerClaimControlNumber, "2026250012345");
+  assert.match(stored[0].key, /^remittance\/CL001-.*\.edi$/);
+  assert.equal(repository.calls.feedback[0].storageRef, `blob://${stored[0].key}`);
+  // The stored bytes are the payer's actual EDI document, not our parse of
+  // it -- verbatim, not re-encoded as JSON.
+  assert.equal(stored[0].content.toString(), DENIED_REMITTANCE);
+  assert.match(stored[0].content.toString(), /2026250012345/);
 });
 
 test("a blob-storage failure does not lose the reading we already have", async () => {

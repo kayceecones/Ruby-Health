@@ -45,7 +45,8 @@ export class RemittanceIngestError extends Error {
  *   not lose the reading of a document we already parsed successfully.
  * @param {object} deps.adjustmentCodes   From loadAdjustmentCodes().
  * @param {string} deps.claimId
- * @param {object} deps.remittance        The payer's raw payload.
+ * @param {string|{x12: string}} deps.remittance  The payer's raw 835 EDI
+ *   document, or an object carrying one under an `x12` property.
  * @param {string} [deps.dateOfService]   For the filing-deadline clock.
  * @param {object} [deps.submittedClaim]  To spot lines never adjudicated.
  * @param {string} [deps.today]           Injected so the clocks are testable.
@@ -60,7 +61,7 @@ export async function ingestRemittance({
   submittedClaim,
   today,
 }) {
-  if (!remittance || typeof remittance !== "object") {
+  if (!remittance) {
     throw new RemittanceIngestError("A remittance payload is required.");
   }
 
@@ -74,17 +75,16 @@ export async function ingestRemittance({
   const adjudication = parsedClaims[0];
   const analysis = analyzeRemittance(adjudication, adjustmentCodes, { dateOfService, submittedClaim, today });
 
-  // Keep the document itself, not just our reading of it. The parser's field
-  // mapping is still unverified against a live payer payload -- if it turns
-  // out to have read something wrong, the original is here to re-read rather
-  // than gone.
+  // Keep the document itself, not just our reading of it -- if a future edge
+  // case in the parser turns out wrong, the original is here to re-read.
   let storageRef = null;
   if (blobStore) {
     try {
-      storageRef = await blobStore.putBlob(
-        `remittance/${claimId}-${Date.now()}.json`,
-        Buffer.from(JSON.stringify(remittance, null, 2))
-      );
+      // Stored as the raw EDI text, not re-encoded as JSON -- it already is
+      // exactly the bytes the payer sent, and re-wrapping a string in
+      // JSON.stringify would just escape its own newlines for no reason.
+      const raw = typeof remittance === "string" ? remittance : remittance.x12;
+      storageRef = await blobStore.putBlob(`remittance/${claimId}-${Date.now()}.edi`, Buffer.from(raw));
     } catch (err) {
       console.error(`Storing the raw remittance for claim '${claimId}' failed:`, err);
     }

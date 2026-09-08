@@ -1581,26 +1581,29 @@
       return wrap;
     }
 
-    // Until someone confirms what Stedi returns and how to fetch it, a payer
-    // response is pasted in by hand. The same endpoint serves automatic
-    // retrieval later, so this is a stopgap on the way in, not a dead end.
-    const SAMPLE_DENIAL = {
-      payerClaimControlNumber: "2026250012345",
-      claimStatusCode: 4,
-      productionDate: "2026-09-05",
-      payerName: "Sample Payer Insurance",
-      totalClaimChargeAmount: "150.00",
-      claimPaymentAmount: "0.00",
-      serviceLines: [
-        {
-          procedureCode: "99213",
-          lineItemChargeAmount: "150.00",
-          lineItemProviderPaymentAmount: "0.00",
-          adjustments: [{ adjustmentGroupCode: "CO", adjustmentReasonCode: "50", adjustmentAmount: "150.00" }],
-          remarkCodes: ["N115"],
-        },
-      ],
-    };
+    // Until automatic retrieval is built, a payer response is pasted in by
+    // hand -- as the raw X12 835 text a clearinghouse actually sends, confirmed
+    // against a real Stedi Test Payer document (see parseRemittance.js). A
+    // synthetic denial, CO-50 (medical necessity) on its one line.
+    const SAMPLE_DENIAL = [
+      "ISA*00*          *00*          *ZZ*STEDITEST      *ZZ*134129016687   *260908*1907*^*00501*000000010*0*T*`~",
+      "GS*HP*STEDITEST*134129016687*20260908*190744*10*X*005010X221A1~",
+      "ST*835*0001~",
+      "BPR*I*0*C*ACH************20260905~",
+      "TRN*1*trace*1234567890~",
+      "DTM*405*20260905~",
+      "N1*PR*Sample Payer Insurance*XV*SAMPLE~",
+      "LX*1~",
+      "CLP*ruby-1*4*150*0*0*ZZ*2026250012345*11*1~",
+      "DTM*232*20260905~",
+      "SVC*HC`99213*150*0**1*HC`99213*1~",
+      "DTM*472*20260905~",
+      "CAS*CO*50*150~",
+      "LQ*HE*N115~",
+      "SE*20*0001~",
+      "GE*1*10~",
+      "IEA*1*000000010~",
+    ].join("\n");
 
     function renderRecordResponse(claim, encounter, onIngested) {
       const wrap = document.createElement("div");
@@ -1614,7 +1617,7 @@
 
       const input = document.createElement("textarea");
       input.id = "remittanceInput";
-      input.placeholder = '{ "claimStatusCode": 4, ... }';
+      input.placeholder = "ISA*00*...~\nGS*HP*...~\nST*835*0001~\n...";
       wrap.appendChild(input);
 
       const status = document.createElement("div");
@@ -1628,7 +1631,7 @@
       sampleBtn.className = "btn";
       sampleBtn.textContent = "Load sample denial";
       sampleBtn.addEventListener("click", () => {
-        input.value = JSON.stringify(SAMPLE_DENIAL, null, 2);
+        input.value = SAMPLE_DENIAL;
       });
 
       const recordBtn = document.createElement("button");
@@ -1636,11 +1639,9 @@
       recordBtn.className = "btn btn-primary";
       recordBtn.textContent = "Record payer response";
       recordBtn.addEventListener("click", async () => {
-        let payload;
-        try {
-          payload = JSON.parse(input.value);
-        } catch (err) {
-          status.textContent = "That isn't valid JSON: " + err.message;
+        const payload = input.value.trim();
+        if (!payload) {
+          status.textContent = "Paste a raw 835 EDI document first.";
           status.className = "status error";
           return;
         }
