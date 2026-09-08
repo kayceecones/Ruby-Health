@@ -2302,10 +2302,28 @@
       renderStediResult();
     }
 
+    // Best-effort, same spirit as the backend's own persistArtifact: the
+    // encounter's status in Notion should track what actually happened to
+    // it, but a network hiccup here shouldn't block the reviewer from
+    // marking their own work done on screen.
+    async function persistEncounterStatus(status) {
+      if (!state.encounterId) return;
+      try {
+        await fetch(`/api/encounters/${encodeURIComponent(state.encounterId)}/status`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        });
+      } catch (err) {
+        console.error(`Updating encounter status to '${status}' failed:`, err);
+      }
+    }
+
     markReviewedBtn.addEventListener("click", () => {
       state.reviewed = true;
       applyReviewUiState();
       renderNav();
+      persistEncounterStatus("reviewed");
     });
 
     editAgainBtn.addEventListener("click", () => {
@@ -2317,6 +2335,7 @@
       stediStatusEl.className = "status";
       applyReviewUiState();
       renderNav();
+      persistEncounterStatus("draft");
     });
 
     function renderStediResult() {
@@ -2814,6 +2833,38 @@
 
     patientSearchInput.addEventListener("input", renderPatientList);
 
+    function hasEncounterContent() {
+      return Boolean(state.transcript.trim() || hasFacts() || state.codes.length > 0 || state.claim);
+    }
+
+    async function persistReattachedArtifact(encounterId, stage, content) {
+      try {
+        await fetch(`/api/encounters/${encodeURIComponent(encounterId)}/artifacts`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stage, content }),
+        });
+      } catch (err) {
+        console.error(`Re-attaching '${stage}' to encounter '${encounterId}' failed:`, err);
+      }
+    }
+
+    // Attaching mid-flow (after some tabs are already filled in) always
+    // creates a brand-new encounter -- see below -- but whatever was
+    // extracted before that point lives only in this tab's in-memory state,
+    // not under the new encounter, until it's re-filed here. Without this,
+    // that work stayed permanently attached to whichever encounter was
+    // active before (usually the auto-provisioned "unidentified patient"
+    // one), so attaching the right patient afterward didn't bring it along.
+    async function reattachExistingProgress(encounterId) {
+      const jobs = [];
+      if (state.transcript.trim()) jobs.push(persistReattachedArtifact(encounterId, "transcript", { transcript: state.transcript }));
+      if (hasFacts()) jobs.push(persistReattachedArtifact(encounterId, "facts", state.facts));
+      if (state.codes.length > 0) jobs.push(persistReattachedArtifact(encounterId, "codes", state.codes));
+      if (state.claim) jobs.push(persistReattachedArtifact(encounterId, "claim", state.claim));
+      await Promise.all(jobs);
+    }
+
     startClaimBtn.addEventListener("click", async () => {
       if (!state.patientId || !state.caseId) return;
 
@@ -2832,6 +2883,12 @@
           return;
         }
         state.encounterId = data.encounter.encounterId;
+
+        if (hasEncounterContent()) {
+          setIntakeStatus("Attaching existing progress...");
+          await reattachExistingProgress(state.encounterId);
+        }
+
         saveState();
         updatePatientCaseBar();
         closeIntakeModal();

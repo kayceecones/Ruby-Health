@@ -396,6 +396,62 @@ app.post("/api/encounters", async (req, res) => {
   }
 });
 
+// Lets the frontend re-file content it already has in hand -- e.g. a
+// transcript and facts extracted before the provider attached a patient --
+// under a newly-created encounter, without re-running the Claude calls that
+// produced them. See the "Attach" handler in index.html: attaching mid-flow
+// creates a brand-new encounter, and without this, whatever was already
+// extracted stayed orphaned under the auto-provisioned "unidentified
+// patient" encounter instead of following the provider's correction.
+const ENCOUNTER_ARTIFACT_STAGES = ["transcript", "facts", "codes", "claim"];
+
+app.post("/api/encounters/:encounterId/artifacts", async (req, res) => {
+  if (!requireRepository(res)) return;
+  const { stage, content } = req.body || {};
+
+  if (!ENCOUNTER_ARTIFACT_STAGES.includes(stage)) {
+    return res.status(400).json({ error: `Request body must include a 'stage' one of: ${ENCOUNTER_ARTIFACT_STAGES.join(", ")}.` });
+  }
+
+  try {
+    const artifact = await repository.createArtifact({
+      encounterId: req.params.encounterId,
+      stage,
+      content,
+      createdBy: "system",
+    });
+    res.json({ artifact });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Re-attaching artifact failed:", err);
+    res.status(502).json({ error: "Re-attaching artifact failed. See server logs for details." });
+  }
+});
+
+const ENCOUNTER_STATUSES = ["draft", "reviewed", "submitted"];
+
+app.post("/api/encounters/:encounterId/status", async (req, res) => {
+  if (!requireRepository(res)) return;
+  const { status } = req.body || {};
+
+  if (!ENCOUNTER_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `Request body must include a 'status' one of: ${ENCOUNTER_STATUSES.join(", ")}.` });
+  }
+
+  try {
+    const encounter = await repository.updateEncounterStatus(req.params.encounterId, status);
+    res.json({ encounter });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Updating encounter status failed:", err);
+    res.status(502).json({ error: "Updating encounter status failed. See server logs for details." });
+  }
+});
+
 app.post("/api/extract", async (req, res) => {
   const { transcript, encounterId } = req.body || {};
 
@@ -486,6 +542,30 @@ app.post("/api/suggest-codes", async (req, res) => {
   }
 });
 
+// Best-effort, same as persistArtifact: a claim previously only became a
+// real Claim row if it was actually submitted to Stedi, so a claim that was
+// drafted but never submitted (or whose submission failed) left no trace in
+// History at all -- even though its content was safely persisted as an
+// artifact the whole time. Filing a "draft" Claim row as soon as the claim
+// is populated means History always reflects what was created, not just
+// what got all the way to submission.
+async function persistClaimDraft(encounterId, claim) {
+  if (!repository || !encounterId) return;
+  try {
+    const artifact = await repository.getLatestArtifact(encounterId, "claim");
+    if (!artifact) return;
+    await repository.createClaim({
+      encounterId,
+      artifactId: artifact.artifactId,
+      claimType: "original",
+      payerName: claim.payer?.name || "Unknown payer",
+      memberId: claim.patient?.memberId || "Unknown member",
+    });
+  } catch (err) {
+    console.error(`Persisting draft claim for encounter '${encounterId}' failed:`, err);
+  }
+}
+
 app.post("/api/populate-claim", async (req, res) => {
   const { facts, codes, providerId, encounterId } = req.body || {};
 
@@ -500,6 +580,7 @@ app.post("/api/populate-claim", async (req, res) => {
     const providerProfile = getProviderProfile(providerId || DEFAULT_PROVIDER_ID);
     const claim = populateClaim(facts, codes, providerProfile);
     await persistArtifact(encounterId, "claim", claim);
+    await persistClaimDraft(encounterId, claim);
     res.json({ claim });
   } catch (err) {
     if (err instanceof ClaimError) {
@@ -543,24 +624,35 @@ app.post("/api/provider-profile", (req, res) => {
   }
 });
 
-// Best-effort, same as persistArtifact: recording that a claim was actually
-// submitted is what makes it show up in the History activity view, but a
-// failure here shouldn't turn a successful Stedi submission into an error
-// response. Requires the claim-stage artifact to already be persisted (it
-// is, by /api/populate-claim) since Claim rows point at it.
+// Best-effort, same as persistArtifact. /api/populate-claim now files a
+// draft Claim row already (see persistClaimDraft) -- reuse the most recent
+// one instead of creating a sibling, so a normal draft-then-submit flow
+// ends with one Claim row, not two. Only creates a fresh one as a fallback,
+// for a claim submitted from an encounter old enough to predate that draft
+// row, or if drafting it failed at the time.
 async function persistSubmittedClaim(encounterId, claim) {
   if (!repository || !encounterId) return;
   try {
-    const artifact = await repository.getLatestArtifact(encounterId, "claim");
-    if (!artifact) return;
-    const created = await repository.createClaim({
-      encounterId,
-      artifactId: artifact.artifactId,
-      claimType: "original",
-      payerName: claim.payer?.name || "Unknown payer",
-      memberId: claim.patient?.memberId || "Unknown member",
-    });
-    await repository.updateClaimStatus(created.claimId, "submitted");
+    const existingClaims = await repository.listClaimsForEncounter(encounterId);
+    const draft = [...existingClaims].reverse().find((c) => c.status === "draft");
+    if (draft) {
+      await repository.updateClaimStatus(draft.claimId, "submitted");
+    } else {
+      const artifact = await repository.getLatestArtifact(encounterId, "claim");
+      if (artifact) {
+        const created = await repository.createClaim({
+          encounterId,
+          artifactId: artifact.artifactId,
+          claimType: "original",
+          payerName: claim.payer?.name || "Unknown payer",
+          memberId: claim.patient?.memberId || "Unknown member",
+        });
+        await repository.updateClaimStatus(created.claimId, "submitted");
+      }
+    }
+
+    // A submitted claim means the visit itself is done, not just drafted.
+    await repository.updateEncounterStatus(encounterId, "submitted");
   } catch (err) {
     console.error(`Persisting submitted claim for encounter '${encounterId}' failed:`, err);
   }
