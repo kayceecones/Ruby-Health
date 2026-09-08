@@ -123,6 +123,86 @@ caused a real crash before the defaults were added.
 
 ---
 
+## UI structure
+
+`frontend/index.html` has one set of layout primitives, defined once under
+"Shared layout primitives" in the `<style>` block. **Use them. Do not invent a
+new heading, box, or empty-state class** — if a new section needs something
+these can't express, change the primitive rather than adding a sibling.
+
+Three levels, and nothing between them:
+
+| Level | Class | Rule |
+|---|---|---|
+| Page | `.page-title` / `.page-subtitle` | **Exactly one per visible view.** Says where you are. |
+| Section | `.section-title` | Names the group directly below it. Every group gets one. |
+| Item | `.card` (+ `.card-head` / `.card-title` / `.card-subtitle`) | One thing in that group. |
+
+Plus: `.empty-state` for "there's nothing here yet" — the only one. `.tabs` /
+`.tab` / `.tabpanel` for tabbed content — the only ones; the left sidebar's
+`.nav-item` drives `.tabpanel` too.
+
+Two rules that are easy to break by accident:
+
+- **One page title per view.** A History drill-down renders its own
+  `.page-title`; that's why the root's title lives inside `#historyRoot` rather
+  than above it. Two at once means the top one is lying about where you are.
+- **A section title must not be out-sized by its own contents.** `.section-title`
+  is a small uppercase label on purpose — it groups without competing with the
+  `.card-title`s underneath it.
+
+Spacing above a section title is handled by the stylesheet
+(`.card + .section-title`), so no call site sets its own margin. JS finds
+content by `data-` hooks, not by style class, so restyling can't break behavior.
+
+### Adding a section to a History view
+
+History views are built from a **declared skeleton, filled by name** — never by
+appending in document order. To add a section, add it to that view's `sections`
+list and fill its slot:
+
+```js
+const slots = renderDetailView(historyCaseViewEl, {
+  title: caseObj.title,
+  subtitle: `${caseObj.caseId} · ${patient.name}`,
+  sections: [
+    { name: "encounters", title: "Encounters" },
+    { name: "notes", title: "Case notes" },     // <- new section goes here
+  ],
+});
+fetchHistoryList(slots.encounters, ...);
+loadCaseNotes(slots.notes, ...);                 // lands in its own slot
+```
+
+The position is decided by the `sections` list, not by which fetch finishes
+first. **Do not `appendChild` onto a view container** — that is what put things
+in the wrong place before.
+
+Two more rules for these views:
+
+- **`showHistoryView(name)` is the only way to switch views.** It hides every
+  sibling. Hiding them by hand is how opening an encounter from the activity
+  feed used to leave the whole root list on screen above it.
+- **Tabs come from `buildTabbedPanels()`.** It carries the `role="tablist"` /
+  `aria-selected` wiring and arrow-key navigation. Don't hand-roll a tab strip.
+
+### Adding a field to the Facts card or Claim form
+
+Same contract on the New Claim side: the shape is a list, and the code fills
+slots by name. `FACT_FIELDS` declares the Facts card's fields (`kind` is
+`text`, `chips` or `quotes`); `CLAIM_GROUPS` declares the Claim form's
+fieldsets, filled through `renderFieldGroups()`. Adding a field or a group is
+an entry in that list — not another `appendChild` in the middle of a render
+function.
+
+### Color
+
+`--gold` is decorative only — dots, rules, borders. It fails WCAG AA as text.
+Anything readable uses `--gold-text`. Before using a color for text, check it
+against `--surface` at 4.5:1 (3:1 for large bold text).
+
+---
+
 ## Working with Kaycee
 
 **Start plans with a plain-language summary**, before any technical detail: what

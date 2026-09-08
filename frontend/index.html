@@ -8,12 +8,15 @@
     :root {
       --ink: #251C1B;
       --ink-2: #655F5D;
-      --ink-3: #9B9694;
+      --ink-3: #757270;
       --plum: #5C1A32;
       --garnet: #6B0F1E;
       --cherry: #CF424A;
       --blush: #FFB8C8;
       --gold: #B8965A;
+      /* --gold is decorative only (dots, rules, borders); it fails contrast as
+         text. Anything readable uses --gold-text. */
+      --gold-text: #6E5830;
       --cream: #FBFAF7;
       --surface: #FBFAF7;
       --card: #FBFAF7;
@@ -53,37 +56,30 @@
 
     .route { display: none; flex: 1; min-width: 0; }
     .route.active { display: flex; }
+    [hidden] { display: none !important; }
 
     /* ---- History route ---- */
     #historyView.route.active { display: block; }
     #historyView { flex: 1; min-width: 0; padding: 32px 44px; max-width: 900px; }
-    .history-empty { color: var(--ink-2); font-size: 13.5px; line-height: 1.6; }
-    .history-section-title { font-weight: 600; font-size: 13.5px; color: var(--plum); margin: 28px 0 10px; }
     .history-breadcrumb { font-size: 12.5px; color: var(--ink-2); margin-bottom: 16px; }
     .history-breadcrumb a { cursor: pointer; text-decoration: none; }
-    .history-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
-    .history-header h2 { font-family: 'Manrope', system-ui, sans-serif; font-size: 18px; font-weight: 700; color: var(--ink); margin: 0; }
-    .history-header-sub { font-size: 12.5px; color: var(--ink-2); margin-bottom: 18px; }
     .history-row-link { background: none; border: none; padding: 0; margin: 0; width: 100%; text-align: left; }
     .history-row-link:hover .activity-row { background: var(--surface); }
 
     /* ---- History encounter view (read mode) ---- */
-    .ro-tabs { display: flex; gap: 8px; margin: 18px 0 20px; flex-wrap: wrap; }
-    .ro-tab {
+    .tabs { display: flex; gap: 8px; margin: 18px 0 20px; flex-wrap: wrap; }
+    .tab {
       font-family: 'Manrope', system-ui, sans-serif; font-weight: 600; font-size: 12.5px; padding: 7px 14px;
       border-radius: 20px; border: 1px solid var(--border); background: var(--card); color: var(--ink-2);
     }
-    .ro-tab.active { background: var(--ruby); border-color: var(--ruby); color: var(--cream); }
-    .ro-panel { display: none; }
-    .ro-panel.active { display: block; }
-    .ro-empty { color: var(--ink-2); font-size: 13px; font-style: italic; }
+    .tab.active { background: var(--ruby); border-color: var(--ruby); color: var(--cream); }
     .ro-kv { display: grid; grid-template-columns: 140px 1fr; gap: 6px 14px; font-size: 13px; margin: 0 0 6px; }
     .ro-kv dt { color: var(--ink-2); font-weight: 600; }
     .ro-kv dd { margin: 0; }
     .ro-list { margin: 6px 0 14px; padding-left: 20px; font-size: 13px; line-height: 1.6; }
-    .ro-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 16px; }
-    .ro-table th, .ro-table td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border-soft); }
-    .ro-table th { color: var(--ink-2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+    .table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 16px; }
+    .table th, .table td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border-soft); }
+    .table th { color: var(--ink-2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
     .ro-warning {
       background: rgba(207, 66, 74, 0.1); border: 1px solid rgba(207, 66, 74, 0.3); border-radius: 8px;
       padding: 10px 12px; font-size: 12.5px; color: var(--garnet); margin-bottom: 8px;
@@ -101,7 +97,7 @@
     .ro-revision-row:hover { color: var(--ink); }
     .ro-revision-row.selected { color: var(--ruby); font-weight: 600; }
     .ro-version-banner {
-      font-size: 11.5px; color: var(--gold); background: rgba(184, 150, 90, 0.14); border-radius: 6px;
+      font-size: 11.5px; color: var(--gold-text); background: rgba(184, 150, 90, 0.14); border-radius: 6px;
       padding: 6px 10px; margin-bottom: 12px; display: inline-block;
     }
 
@@ -223,7 +219,6 @@
     #patientCaseLabel.assigned { color: var(--ink); }
 
     .intake-section { margin-bottom: 24px; }
-    .intake-label { font-size: 11px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
     .intake-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
     .intake-option {
       display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 14px; border-radius: 10px;
@@ -233,7 +228,6 @@
     .intake-option.selected { border-color: var(--ruby); background: rgba(219, 42, 51, 0.06); }
     .intake-option .intake-option-title { font-weight: 700; color: var(--ink); }
     .intake-option .intake-option-meta { color: var(--ink-2); font-size: 11.5px; }
-    .intake-empty { color: var(--ink-2); font-size: 12.5px; margin-bottom: 10px; }
     .intake-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
     .intake-form input {
       font: inherit; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--ink);
@@ -259,19 +253,44 @@
 
     /* ---- Main content ---- */
     #main { flex: 1; min-width: 0; padding: 32px 44px; max-width: 900px; }
-    .panel { display: none; }
-    .panel.active { display: block; }
-    .panel-title { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; color: var(--plum); margin: 0 0 4px; }
-    .panel-subtitle { font-size: 12.5px; color: var(--ink-2); margin: 0 0 20px; line-height: 1.5; }
+    /* ---- Shared layout primitives ----------------------------------------
+       Three levels of heading, one box, one placeholder voice, one tab
+       mechanic. Every view uses these; nothing defines its own. A new
+       section is a .section-title plus a .card, whichever route it lands in.
+
+       1. .page-title / .page-subtitle -- exactly one per view, says where you are
+       2. .section-title               -- names the group directly below it
+       3. .card + .card-head/.card-title/.card-subtitle -- one item in that group
+    ------------------------------------------------------------------------ */
+    .page-title { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; color: var(--plum); margin: 0 0 4px; }
+    .page-subtitle { font-size: 12.5px; color: var(--ink-2); margin: 0 0 20px; line-height: 1.5; }
+
+    .section-title {
+      font-family: 'Manrope', system-ui, sans-serif; font-size: 11px; font-weight: 700; color: var(--ink-2);
+      text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;
+    }
+    /* A section title that follows content needs air above it. Handled here
+       so no call site has to remember a margin. */
+    .card + .section-title, .tabpanel + .section-title, .section-body + .section-title { margin-top: 28px; }
 
     .card {
       background: var(--card); border: 1px solid var(--border); border-radius: 16px;
       box-shadow: var(--shadow-card); padding: 22px 26px; margin-bottom: 20px;
     }
-    .eyebrow {
-      font-family: 'Manrope', system-ui, sans-serif; font-size: 11px; font-weight: 700; color: var(--ink-2);
-      text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;
-    }
+    /* A card whose children are full-bleed rows rather than padded content. */
+    .card-rows { padding: 0; }
+    /* Rows inside a padded card line up with the card's own text. */
+    .card:not(.card-rows) .activity-row { padding-left: 0; padding-right: 0; }
+    .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 2px; }
+    .card-title { font-family: 'Manrope', system-ui, sans-serif; font-size: 15px; font-weight: 700; color: var(--ink); margin: 0; }
+    .card-subtitle { font-size: 12.5px; color: var(--ink-2); margin-bottom: 14px; }
+
+    .section-body { display: block; }
+
+    .empty-state { color: var(--ink-2); font-size: 13px; line-height: 1.6; }
+
+    .tabpanel { display: none; }
+    .tabpanel.active { display: block; }
 
     .btn {
       font-weight: 600; font-size: 12.5px; padding: 9px 16px; border-radius: 8px; border: 1px solid var(--border);
@@ -387,7 +406,7 @@
       padding: 2px 7px; border-radius: 5px; border: 1px solid transparent; white-space: nowrap;
     }
     .quote-flag.verified { color: var(--ink-2); border-color: var(--border-soft); background: transparent; }
-    .quote-flag.paraphrased { color: var(--gold); border-color: var(--gold); background: rgba(184, 150, 90, 0.09); }
+    .quote-flag.paraphrased { color: var(--gold-text); border-color: var(--gold); background: rgba(184, 150, 90, 0.09); }
     .quote-flag.unsupported { color: var(--accent); border-color: var(--accent); background: rgba(219, 42, 51, 0.07); }
     .quote-flag.unchecked { color: var(--ink-3); border-color: var(--border-soft); background: transparent; }
 
@@ -508,14 +527,14 @@
     <div id="intakeModal">
       <div id="intakeScreen">
         <button id="closeIntakeBtn" type="button" aria-label="Close">&times;</button>
-        <div class="panel-title">Patient &amp; case</div>
-        <div class="panel-subtitle">Attach this encounter to a patient and case. Optional -- an unattributed encounter still saves under an "unidentified patient" case you can find later.</div>
+        <h1 class="page-title">Patient &amp; case</h1>
+        <div class="page-subtitle">Attach this encounter to a patient and case. Optional -- an unattributed encounter still saves under an "unidentified patient" case you can find later.</div>
 
         <div class="intake-section" id="patientStep">
-          <div class="intake-label">Patient</div>
+          <div class="section-title">Patient</div>
           <input id="patientSearchInput" type="text" placeholder="Search patients by name..." />
           <div id="patientList" class="intake-list" style="margin-top:10px;"></div>
-          <div id="patientEmpty" class="intake-empty" style="display:none;">No matching patients.</div>
+          <div id="patientEmpty" class="empty-state" style="display:none;">No matching patients.</div>
           <button id="newPatientToggleBtn" class="btn" type="button">+ New patient</button>
           <div id="newPatientForm" class="intake-form" style="display:none;">
             <input id="newPatientName" type="text" placeholder="Full name" />
@@ -525,9 +544,9 @@
         </div>
 
         <div class="intake-section" id="caseStep" style="display:none;">
-          <div class="intake-label">Case</div>
+          <div class="section-title">Case</div>
           <div id="caseList" class="intake-list"></div>
-          <div id="caseEmpty" class="intake-empty" style="display:none;">No open cases for this patient yet.</div>
+          <div id="caseEmpty" class="empty-state" style="display:none;">No open cases for this patient yet.</div>
           <button id="newCaseToggleBtn" class="btn" type="button">+ New case</button>
           <div id="newCaseForm" class="intake-form" style="display:none;">
             <input id="newCaseTitle" type="text" placeholder="Case title, e.g. Annual physical" />
@@ -589,9 +608,9 @@
         </div>
       </div>
 
-      <div id="panelTranscript" class="panel">
-        <div class="panel-title">Transcript</div>
-        <div class="panel-subtitle">Paste a transcript, or use the mic below. Nothing here navigates you anywhere automatically.</div>
+      <div id="panelTranscript" class="tabpanel">
+        <h1 class="page-title">Transcript</h1>
+        <div class="page-subtitle">Paste a transcript, or use the mic below. Nothing here navigates you anywhere automatically.</div>
 
         <div class="card" id="micControlCard">
           <div id="micStateRow">
@@ -649,9 +668,9 @@
         </div>
       </div>
 
-      <div id="panelFacts" class="panel">
-        <div class="panel-title">Clinical facts</div>
-        <div class="panel-subtitle">Auto-filled by "Extract clinical facts" on the Transcript tab, or edit/add by hand — either way, this feeds the Codes and Claim tabs.</div>
+      <div id="panelFacts" class="tabpanel">
+        <h1 class="page-title">Clinical facts</h1>
+        <div class="page-subtitle">Auto-filled by "Extract clinical facts" on the Transcript tab, or edit/add by hand — either way, this feeds the Codes and Claim tabs.</div>
         <div class="card" id="factsCard"></div>
 
         <div class="step-nav">
@@ -659,9 +678,9 @@
         </div>
       </div>
 
-      <div id="panelCodes" class="panel">
-        <div class="panel-title">Suggested codes</div>
-        <div class="panel-subtitle">AI-suggested ICD-10 / CPT codes with a confidence level and rationale — sanity-check before use, not validated against a real coding rule set. You can edit any field, or add/remove codes by hand.</div>
+      <div id="panelCodes" class="tabpanel">
+        <h1 class="page-title">Suggested codes</h1>
+        <div class="page-subtitle">AI-suggested ICD-10 / CPT codes with a confidence level and rationale — sanity-check before use, not validated against a real coding rule set. You can edit any field, or add/remove codes by hand.</div>
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
           <button id="suggestCodesBtn" class="btn" type="button">Suggest codes from current facts</button>
         </div>
@@ -673,9 +692,9 @@
         </div>
       </div>
 
-      <div id="panelClaim" class="panel">
-        <div class="panel-title">Claim draft &amp; review</div>
-        <div class="panel-subtitle">Patient and payer fields are synthetic placeholders since no real patient is involved. The provider is a real seeded sandbox profile. After review, this claim can be submitted to Stedi's sandbox Test Payer only — never a real payer.</div>
+      <div id="panelClaim" class="tabpanel">
+        <h1 class="page-title">Claim draft &amp; review</h1>
+        <div class="page-subtitle">Patient and payer fields are synthetic placeholders since no real patient is involved. The provider is a real seeded sandbox profile. After review, this claim can be submitted to Stedi's sandbox Test Payer only — never a real payer.</div>
         <button id="populateClaimBtn" class="btn btn-primary" type="button">Populate claim from current facts + codes</button>
         <div id="claimStatus" class="status"></div>
         <div id="claimForm"></div>
@@ -695,22 +714,26 @@
     </div>
 
     <div id="historyView" class="route">
-      <div class="panel-title">History</div>
-      <div class="panel-subtitle">Recent activity, and every patient's cases and visits.</div>
+      <nav id="historyBreadcrumb" class="history-breadcrumb" aria-label="Breadcrumb" hidden></nav>
 
-      <div id="historyBreadcrumb" class="history-breadcrumb" style="display: none;"></div>
-
+      <!-- The root's title lives inside #historyRoot, not above it: a drill-down
+           view renders its own .page-title, and two page titles at once is what
+           made "History / Recent activity..." sit over a single encounter. -->
       <div id="historyRoot">
+        <h1 class="page-title">History</h1>
+        <div class="page-subtitle">Recent activity, and every patient's cases and visits.</div>
+
+        <div class="section-title">Recent activity</div>
         <div id="historyActivity"></div>
 
-        <div class="history-section-title">Patients</div>
+        <div class="section-title">Patients</div>
         <input id="historyPatientSearch" class="row-input" type="text" placeholder="Search patients by name..." style="margin-bottom: 12px;" />
         <div id="historyPatientList"></div>
       </div>
 
-      <div id="historyPatientView" style="display: none;"></div>
-      <div id="historyCaseView" style="display: none;"></div>
-      <div id="historyEncounterView" style="display: none;"></div>
+      <div id="historyPatientView" hidden></div>
+      <div id="historyCaseView" hidden></div>
+      <div id="historyEncounterView" hidden></div>
     </div>
   </div>
 
@@ -939,21 +962,20 @@
       if (items.length === 0) {
         container.innerHTML = "";
         const msg = document.createElement("div");
-        msg.className = "history-empty";
+        msg.className = "empty-state";
         msg.textContent = emptyMessage;
         container.appendChild(msg);
         return;
       }
       container.innerHTML = "";
       const card = document.createElement("div");
-      card.className = "card";
-      card.style.padding = "0";
+      card.className = "card card-rows";
       for (const item of items) card.appendChild(renderRow(item));
       container.appendChild(card);
     }
 
     async function fetchHistoryList(container, url, { renderRow, emptyMessage, onData }) {
-      container.innerHTML = '<div class="history-empty">Loading...</div>';
+      container.innerHTML = '<div class="empty-state">Loading...</div>';
       try {
         const res = await fetch(url);
         const data = await res.json();
@@ -1042,11 +1064,11 @@
 
     function renderHistoryBreadcrumb() {
       if (historyState.view === "root") {
-        historyBreadcrumbEl.style.display = "none";
+        historyBreadcrumbEl.hidden = true;
         historyBreadcrumbEl.innerHTML = "";
         return;
       }
-      historyBreadcrumbEl.style.display = "block";
+      historyBreadcrumbEl.hidden = false;
       const parts = ['<a data-nav="root">History</a>'];
       if (historyState.view === "patient") {
         parts.push(" / <span>" + escapeHtml(historyState.patient.name) + "</span>");
@@ -1068,29 +1090,119 @@
       });
     }
 
-    function renderHistoryDetailHeader(container, title, subtitle, sectionTitle) {
+    // ---- History views: one skeleton, filled by name ---------------------
+    //
+    // Every History view is the same shape -- a page title, a subtitle, then
+    // named sections -- so the shape is declared once and filled by name.
+    // Building these by appending in document order is what kept putting new
+    // sections in the wrong place: the order a fetch happened to resolve in
+    // decided where its content landed.
+
+    const HISTORY_VIEWS = {
+      root: historyRootEl,
+      patient: historyPatientViewEl,
+      case: historyCaseViewEl,
+      encounter: historyEncounterViewEl,
+    };
+
+    // Each open* function used to hide its siblings by hand, and missed some:
+    // jumping straight to an encounter from the activity feed left the whole
+    // root list on screen above it, so you landed on a page whose title said
+    // "History" and had to scroll past everything to find what you clicked.
+    function showHistoryView(name) {
+      for (const [key, el] of Object.entries(HISTORY_VIEWS)) el.hidden = key !== name;
+    }
+
+    // sections is [{ name, title?, content? }] in the order they should appear.
+    // Returns { <name>: element } so a slow fetch fills its own slot whenever
+    // it lands, rather than appending after whatever finished first.
+    function renderDetailView(container, { title, subtitle, sections = [] }) {
       container.innerHTML = "";
-      const header = document.createElement("div");
-      header.className = "history-header";
-      const h2 = document.createElement("h2");
-      h2.textContent = title;
-      header.appendChild(h2);
-      container.appendChild(header);
+
+      const h1 = document.createElement("h1");
+      h1.className = "page-title";
+      h1.textContent = title;
+      container.appendChild(h1);
 
       const sub = document.createElement("div");
-      sub.className = "history-header-sub";
+      sub.className = "page-subtitle";
       sub.textContent = subtitle;
       container.appendChild(sub);
 
-      const section = document.createElement("div");
-      section.className = "history-section-title";
-      section.style.marginTop = "0";
-      section.textContent = sectionTitle;
-      container.appendChild(section);
+      const slots = {};
+      for (const section of sections) {
+        if (section.title) {
+          const heading = document.createElement("div");
+          heading.className = "section-title";
+          heading.textContent = section.title;
+          container.appendChild(heading);
+        }
+        const body = document.createElement("div");
+        body.className = "section-body";
+        body.dataset.slot = section.name;
+        if (section.content) body.appendChild(section.content);
+        container.appendChild(body);
+        slots[section.name] = body;
+      }
+      return slots;
+    }
 
-      const listEl = document.createElement("div");
-      container.appendChild(listEl);
-      return listEl;
+    // One tab component, used wherever content is tabbed. Returns the element
+    // to drop into a slot plus the panel each tab writes into.
+    function buildTabbedPanels(names, { label }) {
+      const wrap = document.createElement("div");
+      const strip = document.createElement("div");
+      strip.className = "tabs";
+      strip.setAttribute("role", "tablist");
+      strip.setAttribute("aria-label", label);
+      const panels = {};
+      const buttons = {};
+
+      const select = (name) => {
+        for (const [n, btn] of Object.entries(buttons)) {
+          const on = n === name;
+          btn.classList.toggle("active", on);
+          btn.setAttribute("aria-selected", String(on));
+          btn.tabIndex = on ? 0 : -1;
+          panels[n].classList.toggle("active", on);
+        }
+      };
+
+      names.forEach((name, i) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "tab";
+        btn.id = `tab-${label}-${name}`;
+        btn.setAttribute("role", "tab");
+        btn.setAttribute("aria-controls", `panel-${label}-${name}`);
+        btn.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+        btn.addEventListener("click", () => select(name));
+        // Arrow keys move between tabs, which is what a tablist is expected
+        // to do once it announces itself as one.
+        btn.addEventListener("keydown", (e) => {
+          const delta = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+          if (!delta) return;
+          e.preventDefault();
+          const next = names[(i + delta + names.length) % names.length];
+          select(next);
+          buttons[next].focus();
+        });
+        strip.appendChild(btn);
+        buttons[name] = btn;
+
+        const panel = document.createElement("div");
+        panel.className = "tabpanel";
+        panel.id = `panel-${label}-${name}`;
+        panel.setAttribute("role", "tabpanel");
+        panel.setAttribute("aria-labelledby", btn.id);
+        panel.appendChild(emptyState("Loading..."));
+        panels[name] = panel;
+        wrap.appendChild(panel);
+      });
+
+      wrap.insertBefore(strip, wrap.firstChild);
+      select(names[0]);
+      return { element: wrap, panels };
     }
 
     function sortCasesOpenFirst(cases) {
@@ -1141,18 +1253,14 @@
       historyState = { view: "patient", patient };
       pushHistoryState({ route: "history", view: "patient", patient });
       renderHistoryBreadcrumb();
-      historyRootEl.style.display = "none";
-      historyCaseViewEl.style.display = "none";
-      historyEncounterViewEl.style.display = "none";
-      historyPatientViewEl.style.display = "block";
+      showHistoryView("patient");
 
-      const listEl = renderHistoryDetailHeader(
-        historyPatientViewEl,
-        patient.name,
-        `${patient.patientId} · DOB ${patient.dateOfBirth || "unknown"}`,
-        "Cases"
-      );
-      fetchHistoryList(listEl, `/api/patients/${encodeURIComponent(patient.patientId)}/cases`, {
+      const slots = renderDetailView(historyPatientViewEl, {
+        title: patient.name,
+        subtitle: `${patient.patientId} · DOB ${patient.dateOfBirth || "unknown"}`,
+        sections: [{ name: "cases", title: "Cases" }],
+      });
+      fetchHistoryList(slots.cases, `/api/patients/${encodeURIComponent(patient.patientId)}/cases`, {
         renderRow: (c) => renderCaseRow(patient, c),
         emptyMessage: "No cases yet for this patient.",
         onData: (data) => sortCasesOpenFirst(data.cases || []),
@@ -1199,19 +1307,16 @@
       historyState = { view: "case", patient, case: caseObj };
       pushHistoryState({ route: "history", view: "case", patient, case: caseObj });
       renderHistoryBreadcrumb();
-      historyPatientViewEl.style.display = "none";
-      historyEncounterViewEl.style.display = "none";
-      historyCaseViewEl.style.display = "block";
+      showHistoryView("case");
 
       const statusNote =
         caseObj.status === "closed" && caseObj.closedAt ? `closed ${formatActivityDate(caseObj.closedAt)}` : caseObj.status;
-      const listEl = renderHistoryDetailHeader(
-        historyCaseViewEl,
-        caseObj.title || caseObj.caseId,
-        `${caseObj.caseId} · ${patient.name} · ${statusNote}`,
-        "Encounters"
-      );
-      fetchHistoryList(listEl, `/api/cases/${encodeURIComponent(caseObj.caseId)}/encounters`, {
+      const slots = renderDetailView(historyCaseViewEl, {
+        title: caseObj.title || caseObj.caseId,
+        subtitle: `${caseObj.caseId} · ${patient.name} · ${statusNote}`,
+        sections: [{ name: "encounters", title: "Encounters" }],
+      });
+      fetchHistoryList(slots.encounters, `/api/cases/${encodeURIComponent(caseObj.caseId)}/encounters`, {
         renderRow: (e) => renderEncounterRow(patient, caseObj, e),
         emptyMessage: "No encounters recorded for this case yet.",
         onData: (data) => data.encounters || [],
@@ -1226,9 +1331,9 @@
 
     const READ_TABS = ["transcript", "facts", "codes", "claim"];
 
-    function roEmpty(text) {
+    function emptyState(text) {
       const p = document.createElement("p");
-      p.className = "ro-empty";
+      p.className = "empty-state";
       p.textContent = text;
       return p;
     }
@@ -1246,7 +1351,7 @@
 
     function roTable(headers, rows) {
       const table = document.createElement("table");
-      table.className = "ro-table";
+      table.className = "table";
       const thead = document.createElement("thead");
       const headRow = document.createElement("tr");
       for (const h of headers) {
@@ -1274,7 +1379,7 @@
       const wrap = document.createElement("div");
       const text = (content && content.transcript) || "";
       if (!text.trim()) {
-        wrap.appendChild(roEmpty("No transcript recorded."));
+        wrap.appendChild(emptyState("No transcript recorded."));
         return wrap;
       }
       const pre = document.createElement("div");
@@ -1287,20 +1392,20 @@
     function renderReadOnlyFacts(facts) {
       const wrap = document.createElement("div");
       if (!facts) {
-        wrap.appendChild(roEmpty("No clinical facts recorded."));
+        wrap.appendChild(emptyState("No clinical facts recorded."));
         return wrap;
       }
       const addSection = (label, value) => {
         const h = document.createElement("div");
-        h.className = "eyebrow";
+        h.className = "section-title";
         h.style.marginTop = "14px";
         h.textContent = label;
         wrap.appendChild(h);
         if (Array.isArray(value)) {
-          if (value.length === 0) wrap.appendChild(roEmpty("None recorded."));
+          if (value.length === 0) wrap.appendChild(emptyState("None recorded."));
           else wrap.appendChild(roList(value));
         } else {
-          wrap.appendChild(roEmpty(value || "Not recorded."));
+          wrap.appendChild(emptyState(value || "Not recorded."));
         }
       };
       addSection("Chief complaint", facts.chiefComplaint);
@@ -1314,12 +1419,10 @@
     function renderReadOnlyCodes(codes) {
       const wrap = document.createElement("div");
       if (!Array.isArray(codes) || codes.length === 0) {
-        wrap.appendChild(roEmpty("No codes suggested."));
+        wrap.appendChild(emptyState("No codes suggested."));
         return wrap;
       }
-      const card = document.createElement("div");
-      card.className = "card";
-      card.style.padding = "0";
+      const list = document.createElement("div");
       for (const c of codes) {
         const row = document.createElement("div");
         row.className = "activity-row";
@@ -1348,16 +1451,16 @@
         meta.appendChild(pill);
         row.appendChild(meta);
 
-        card.appendChild(row);
+        list.appendChild(row);
       }
-      wrap.appendChild(card);
+      wrap.appendChild(list);
       return wrap;
     }
 
     function renderReadOnlyClaim(claim) {
       const wrap = document.createElement("div");
       if (!claim) {
-        wrap.appendChild(roEmpty("No claim drafted for this encounter."));
+        wrap.appendChild(emptyState("No claim drafted for this encounter."));
         return wrap;
       }
       for (const w of claim.warnings || []) {
@@ -1384,7 +1487,7 @@
       wrap.appendChild(kv);
 
       const diagH = document.createElement("div");
-      diagH.className = "eyebrow";
+      diagH.className = "section-title";
       diagH.style.marginTop = "18px";
       diagH.textContent = "Diagnoses";
       wrap.appendChild(diagH);
@@ -1396,7 +1499,7 @@
       );
 
       const svcH = document.createElement("div");
-      svcH.className = "eyebrow";
+      svcH.className = "section-title";
       svcH.textContent = "Service lines";
       wrap.appendChild(svcH);
       wrap.appendChild(
@@ -1448,7 +1551,7 @@
         row.addEventListener("click", () => {
           list.querySelectorAll(".ro-revision-row").forEach((r) => r.classList.remove("selected"));
           row.classList.add("selected");
-          const contentHost = panel.querySelector(".ro-content-host");
+          const contentHost = panel.querySelector("[data-content-host]");
           contentHost.innerHTML = "";
           if (i !== 0) {
             const banner = document.createElement("div");
@@ -1475,58 +1578,24 @@
       historyState = { view: "encounter", patient, case: caseObj, encounter };
       pushHistoryState({ route: "history", view: "encounter", patient, case: caseObj, encounter });
       renderHistoryBreadcrumb();
-      historyCaseViewEl.style.display = "none";
-      historyEncounterViewEl.style.display = "block";
+      showHistoryView("encounter");
 
-      historyEncounterViewEl.innerHTML = "";
-      const header = document.createElement("div");
-      header.className = "history-header";
-      const h2 = document.createElement("h2");
-      h2.textContent = `Encounter ${encounter.encounterId}`;
-      header.appendChild(h2);
-      historyEncounterViewEl.appendChild(header);
+      const artifacts = buildTabbedPanels(READ_TABS, { label: "encounter" });
+      const panelEls = artifacts.panels;
 
-      const sub = document.createElement("div");
-      sub.className = "history-header-sub";
-      sub.textContent =
-        `${caseObj.title || caseObj.caseId} · ${patient.name} · ${encounter.status} · ` +
-        (formatActivityDate(encounter.occurredAt) || "date unknown");
-      historyEncounterViewEl.appendChild(sub);
+      const slots = renderDetailView(historyEncounterViewEl, {
+        title: `Encounter ${encounter.encounterId}`,
+        subtitle:
+          `${caseObj.title || caseObj.caseId} · ${patient.name} · ${encounter.status} · ` +
+          (formatActivityDate(encounter.occurredAt) || "date unknown"),
+        sections: [
+          // No title: the tab strip names this section itself.
+          { name: "artifacts", content: artifacts.element },
+          { name: "claims", title: "Claims and payer response" },
+        ],
+      });
 
-      const tabsRow = document.createElement("div");
-      tabsRow.className = "ro-tabs";
-      const panelsWrap = document.createElement("div");
-      const panelEls = {};
-
-      for (const tab of READ_TABS) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "ro-tab" + (tab === "transcript" ? " active" : "");
-        btn.textContent = tab.charAt(0).toUpperCase() + tab.slice(1);
-        btn.addEventListener("click", () => {
-          tabsRow.querySelectorAll(".ro-tab").forEach((b) => b.classList.remove("active"));
-          btn.classList.add("active");
-          for (const [t, el] of Object.entries(panelEls)) el.classList.toggle("active", t === tab);
-        });
-        tabsRow.appendChild(btn);
-
-        const panel = document.createElement("div");
-        panel.className = "ro-panel" + (tab === "transcript" ? " active" : "");
-        panel.appendChild(roEmpty("Loading..."));
-        panelEls[tab] = panel;
-        panelsWrap.appendChild(panel);
-      }
-      historyEncounterViewEl.appendChild(tabsRow);
-      historyEncounterViewEl.appendChild(panelsWrap);
-
-      const claimsSection = document.createElement("div");
-      claimsSection.className = "history-section-title";
-      claimsSection.textContent = "Claims and payer response";
-      historyEncounterViewEl.appendChild(claimsSection);
-
-      const claimsEl = document.createElement("div");
-      historyEncounterViewEl.appendChild(claimsEl);
-      loadEncounterClaims(claimsEl, encounter, caseObj);
+      loadEncounterClaims(slots.claims, encounter, caseObj);
 
       fetch(`/api/encounters/${encodeURIComponent(encounter.encounterId)}/artifacts`)
         .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
@@ -1534,7 +1603,7 @@
           if (!ok) {
             for (const t of READ_TABS) {
               panelEls[t].innerHTML = "";
-              panelEls[t].appendChild(roEmpty(data.error || "Couldn't load this encounter's artifacts."));
+              panelEls[t].appendChild(emptyState(data.error || "Couldn't load this encounter's artifacts."));
             }
             return;
           }
@@ -1546,7 +1615,8 @@
             const versions = versionsByStage[tab] || [];
             panelEls[tab].innerHTML = "";
             const contentHost = document.createElement("div");
-            contentHost.className = "ro-content-host";
+            contentHost.className = "card";
+            contentHost.dataset.contentHost = "";
             contentHost.appendChild(READ_RENDERERS[tab](versions[0]?.content));
             panelEls[tab].appendChild(contentHost);
             renderVersionDisclosure(panelEls[tab], versions, READ_RENDERERS[tab]);
@@ -1556,7 +1626,7 @@
           console.error("Loading encounter artifacts failed:", err);
           for (const t of READ_TABS) {
             panelEls[t].innerHTML = "";
-            panelEls[t].appendChild(roEmpty("Couldn't load this encounter's artifacts. Is the server running?"));
+            panelEls[t].appendChild(emptyState("Couldn't load this encounter's artifacts. Is the server running?"));
           }
         });
     }
@@ -1733,7 +1803,7 @@
       const wrap = document.createElement("div");
 
       const intro = document.createElement("div");
-      intro.className = "history-empty";
+      intro.className = "empty-state";
       intro.style.marginBottom = "10px";
       intro.textContent =
         "No payer response recorded yet. Paste an 835 remittance below, or load the sample denial to see how one reads.";
@@ -1889,7 +1959,7 @@
 
       if (draft.quoteGrounding?.length) {
         const head = document.createElement("div");
-        head.className = "eyebrow";
+        head.className = "section-title";
         head.style.marginTop = "14px";
         head.textContent = "Quotes, checked against the transcript";
         wrap.appendChild(head);
@@ -1910,7 +1980,7 @@
 
       if (draft.suggestedCodeChanges?.length) {
         const head = document.createElement("div");
-        head.className = "eyebrow";
+        head.className = "section-title";
         head.style.marginTop = "14px";
         head.textContent = "Suggested code changes";
         wrap.appendChild(head);
@@ -1928,7 +1998,7 @@
 
       if (draft.letterBody) {
         const head = document.createElement("div");
-        head.className = "eyebrow";
+        head.className = "section-title";
         head.style.marginTop = "14px";
         head.textContent = "Draft appeal letter";
         wrap.appendChild(head);
@@ -1991,9 +2061,9 @@
       card.className = "card";
 
       const head = document.createElement("div");
-      head.className = "history-header";
+      head.className = "card-head";
       const title = document.createElement("h2");
-      title.style.fontSize = "15px";
+      title.className = "card-title";
       title.textContent = `${claim.claimId} · ${claim.payerName || "Unknown payer"}`;
       head.appendChild(title);
       const pill = document.createElement("span");
@@ -2003,7 +2073,7 @@
       card.appendChild(head);
 
       const sub = document.createElement("div");
-      sub.className = "history-header-sub";
+      sub.className = "card-subtitle";
       const bits = [claim.claimType];
       if (claim.submittedAt) bits.push(`submitted ${claim.submittedAt}`);
       if (claim.payerClaimControlNumber) bits.push(`payer ref ${claim.payerClaimControlNumber}`);
@@ -2011,7 +2081,7 @@
       card.appendChild(sub);
 
       const body = document.createElement("div");
-      body.appendChild(roEmpty("Loading payer response..."));
+      body.appendChild(emptyState("Loading payer response..."));
       card.appendChild(body);
 
       fetch(`/api/claims/${encodeURIComponent(claim.claimId)}/feedback`)
@@ -2019,7 +2089,7 @@
         .then(({ ok, data }) => {
           body.innerHTML = "";
           if (!ok) {
-            body.appendChild(roEmpty(data.error || "Couldn't load the payer response."));
+            body.appendChild(emptyState(data.error || "Couldn't load the payer response."));
             return;
           }
           const feedback = data.feedback || [];
@@ -2035,7 +2105,7 @@
             // Only offer an appeal where there is money still worth chasing.
             if ((analysis.money?.atRisk || 0) > 0) body.appendChild(renderAppealSection(claim, reload));
           } else {
-            body.appendChild(roEmpty("This payer response was recorded before Ruby could read it."));
+            body.appendChild(emptyState("This payer response was recorded before Ruby could read it."));
           }
 
           if (feedback.length > 1) {
@@ -2048,7 +2118,7 @@
         .catch((err) => {
           console.error("Loading payer feedback failed:", err);
           body.innerHTML = "";
-          body.appendChild(roEmpty("Couldn't load the payer response. Is the server running?"));
+          body.appendChild(emptyState("Couldn't load the payer response. Is the server running?"));
         });
 
       return card;
@@ -2056,19 +2126,19 @@
 
     function loadEncounterClaims(container, encounter, caseObj) {
       const reload = () => loadEncounterClaims(container, encounter, caseObj);
-      container.innerHTML = '<div class="history-empty">Loading claims...</div>';
+      container.innerHTML = '<div class="empty-state">Loading claims...</div>';
 
       fetch(`/api/encounters/${encodeURIComponent(encounter.encounterId)}/claims`)
         .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
         .then(({ ok, data }) => {
           container.innerHTML = "";
           if (!ok) {
-            container.appendChild(roEmpty(data.error || "Couldn't load claims for this encounter."));
+            container.appendChild(emptyState(data.error || "Couldn't load claims for this encounter."));
             return;
           }
           const claims = data.claims || [];
           if (claims.length === 0) {
-            container.appendChild(roEmpty("No claim has been filed for this encounter yet."));
+            container.appendChild(emptyState("No claim has been filed for this encounter yet."));
             return;
           }
           for (const claim of claims) {
@@ -2078,7 +2148,7 @@
         .catch((err) => {
           console.error("Loading encounter claims failed:", err);
           container.innerHTML = "";
-          container.appendChild(roEmpty("Couldn't load claims. Is the server running?"));
+          container.appendChild(emptyState("Couldn't load claims. Is the server running?"));
         });
     }
 
@@ -2086,10 +2156,7 @@
       historyState = { view: "root" };
       pushHistoryState({ route: "history", view: "root" });
       renderHistoryBreadcrumb();
-      historyPatientViewEl.style.display = "none";
-      historyCaseViewEl.style.display = "none";
-      historyEncounterViewEl.style.display = "none";
-      historyRootEl.style.display = "block";
+      showHistoryView("root");
       loadActivity();
       loadHistoryPatients();
     }
@@ -2481,10 +2548,10 @@
     function renderChipField(container, labelText, arr, variant) {
       const field = document.createElement("div");
       field.className = "chip-field";
-      const eyebrow = document.createElement("div");
-      eyebrow.className = "eyebrow";
-      eyebrow.textContent = labelText;
-      field.appendChild(eyebrow);
+      const label = document.createElement("div");
+      label.className = "section-title";
+      label.textContent = labelText;
+      field.appendChild(label);
 
       const list = document.createElement("div");
       list.className = "chip-list";
@@ -2536,10 +2603,10 @@
     function renderNecessityField(container, arr) {
       const field = document.createElement("div");
       field.className = "chip-field";
-      const eyebrow = document.createElement("div");
-      eyebrow.className = "eyebrow";
-      eyebrow.textContent = "Medical necessity language";
-      field.appendChild(eyebrow);
+      const label = document.createElement("div");
+      label.className = "section-title";
+      label.textContent = "Medical necessity language";
+      field.appendChild(label);
 
       const list = document.createElement("div");
       list.className = "quote-list";
@@ -2631,39 +2698,57 @@
       container.appendChild(field);
     }
 
+    // The Facts card's shape, declared rather than appended. Adding a field is
+    // an entry here; its position is this list's order, not wherever a call
+    // happened to sit inside renderFacts.
+    const FACT_FIELDS = [
+      { name: "chiefComplaint", label: "Chief complaint", kind: "text", placeholder: "e.g. Sore throat and fever" },
+      { name: "symptoms", label: "Symptoms", kind: "chips" },
+      { name: "diagnosesDiscussed", label: "Diagnoses discussed", kind: "chips", variant: "diagnosis" },
+      { name: "proceduresPerformed", label: "Procedures performed", kind: "chips" },
+      { name: "medicalNecessityLanguage", label: "Medical necessity language", kind: "quotes" },
+    ];
+
+    function renderChiefComplaintField(container, field, facts) {
+      const wrap = document.createElement("div");
+      wrap.className = "chip-field";
+      const label = document.createElement("div");
+      label.className = "section-title";
+      label.textContent = field.label;
+      wrap.appendChild(label);
+
+      const row = document.createElement("div");
+      row.className = "chief-complaint-row";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.id = "chiefComplaintInput";
+      input.value = facts[field.name] || "";
+      input.placeholder = field.placeholder;
+      input.addEventListener("input", () => {
+        facts[field.name] = input.value;
+        renderNav();
+      });
+      row.appendChild(input);
+      wrap.appendChild(row);
+      container.appendChild(wrap);
+    }
+
     function renderFacts() {
       factsCardEl.innerHTML = "";
       const f = state.facts;
-      if (!Array.isArray(f.symptoms)) f.symptoms = [];
-      if (!Array.isArray(f.diagnosesDiscussed)) f.diagnosesDiscussed = [];
-      if (!Array.isArray(f.proceduresPerformed)) f.proceduresPerformed = [];
-      if (!Array.isArray(f.medicalNecessityLanguage)) f.medicalNecessityLanguage = [];
+      for (const field of FACT_FIELDS) {
+        if (field.kind !== "text" && !Array.isArray(f[field.name])) f[field.name] = [];
+      }
 
-      const ccField = document.createElement("div");
-      ccField.className = "chip-field";
-      const ccEyebrow = document.createElement("div");
-      ccEyebrow.className = "eyebrow";
-      ccEyebrow.textContent = "Chief complaint";
-      ccField.appendChild(ccEyebrow);
-      const ccRow = document.createElement("div");
-      ccRow.className = "chief-complaint-row";
-      const ccInput = document.createElement("input");
-      ccInput.type = "text";
-      ccInput.id = "chiefComplaintInput";
-      ccInput.value = f.chiefComplaint || "";
-      ccInput.placeholder = "e.g. Sore throat and fever";
-      ccInput.addEventListener("input", () => {
-        f.chiefComplaint = ccInput.value;
-        renderNav();
-      });
-      ccRow.appendChild(ccInput);
-      ccField.appendChild(ccRow);
-      factsCardEl.appendChild(ccField);
+      for (const field of FACT_FIELDS) {
+        const slot = document.createElement("div");
+        slot.dataset.slot = field.name;
+        factsCardEl.appendChild(slot);
 
-      renderChipField(factsCardEl, "Symptoms", f.symptoms);
-      renderChipField(factsCardEl, "Diagnoses discussed", f.diagnosesDiscussed, "diagnosis");
-      renderChipField(factsCardEl, "Procedures performed", f.proceduresPerformed);
-      renderNecessityField(factsCardEl, f.medicalNecessityLanguage);
+        if (field.kind === "text") renderChiefComplaintField(slot, field, f);
+        else if (field.kind === "chips") renderChipField(slot, field.label, f[field.name], field.variant);
+        else renderNecessityField(slot, f[field.name]);
+      }
     }
 
     // ---- Codes tab: insight cards ----
@@ -3168,6 +3253,55 @@
       return label;
     }
 
+    // Same contract as renderDetailView, for the Claim tab's form: the group
+    // list decides the order, and each group is filled by name afterwards. A
+    // group with no legend is a bare slot (the warnings callout above the form).
+    function renderFieldGroups(container, groups) {
+      container.innerHTML = "";
+      const slots = {};
+      for (const group of groups) {
+        let host;
+        if (group.legend) {
+          const fieldset = document.createElement("fieldset");
+          fieldset.className = "rh-fieldset";
+          const legend = document.createElement("legend");
+          legend.textContent = group.legend;
+          fieldset.appendChild(legend);
+          host = document.createElement("div");
+          fieldset.appendChild(host);
+          container.appendChild(fieldset);
+        } else {
+          host = document.createElement("div");
+          container.appendChild(host);
+        }
+        host.dataset.slot = group.name;
+        slots[group.name] = host;
+      }
+      return slots;
+    }
+
+    // Which claim fields sit in which group. Adding a field is an entry here.
+    const CLAIM_GROUPS = [
+      // Anything that would draw a denial goes above the form, not buried in it.
+      { name: "warnings" },
+      { name: "patient", legend: "Patient (placeholder)" },
+      { name: "provider", legend: "Provider (placeholder)" },
+      { name: "payer", legend: "Payer (placeholder)" },
+      { name: "clinical", legend: "Clinical summary" },
+      { name: "diagnoses", legend: "Diagnoses (ICD-10)" },
+      { name: "serviceLines", legend: "Service lines (CPT)" },
+    ];
+
+    function claimFieldGrid(slot, fields, { singleColumn = false } = {}) {
+      const grid = document.createElement("div");
+      grid.className = "field-grid";
+      if (singleColumn) grid.style.gridTemplateColumns = "1fr";
+      for (const [label, value, onChange, multiline] of fields) {
+        grid.appendChild(claimLabeledInput(label, value, onChange, multiline));
+      }
+      slot.appendChild(grid);
+    }
+
     function renderClaimForm() {
       claimFormEl.innerHTML = "";
       if (!state.claim) {
@@ -3178,8 +3312,8 @@
         return;
       }
       const c = state.claim;
+      const slots = renderFieldGroups(claimFormEl, CLAIM_GROUPS);
 
-      // Anything that would draw a denial goes above the form, not buried in it.
       if (Array.isArray(c.warnings) && c.warnings.length > 0) {
         const warnBox = document.createElement("div");
         warnBox.className = "claim-warnings";
@@ -3195,85 +3329,54 @@
           row.appendChild(msgEl);
           warnBox.appendChild(row);
         });
-        claimFormEl.appendChild(warnBox);
+        slots.warnings.appendChild(warnBox);
       }
 
-      const patientFieldset = document.createElement("fieldset");
-      patientFieldset.className = "rh-fieldset";
-      patientFieldset.innerHTML = "<legend>Patient (placeholder)</legend>";
-      const patientGrid = document.createElement("div");
-      patientGrid.className = "field-grid";
-      patientGrid.appendChild(claimLabeledInput("Name", c.patient.name, (v) => (c.patient.name = v)));
-      patientGrid.appendChild(claimLabeledInput("Date of birth", c.patient.dob, (v) => (c.patient.dob = v)));
-      patientGrid.appendChild(claimLabeledInput("Sex", c.patient.sex, (v) => (c.patient.sex = v)));
-      patientGrid.appendChild(claimLabeledInput("Member ID", c.patient.memberId, (v) => (c.patient.memberId = v)));
-      patientFieldset.appendChild(patientGrid);
-      claimFormEl.appendChild(patientFieldset);
+      claimFieldGrid(slots.patient, [
+        ["Name", c.patient.name, (v) => (c.patient.name = v)],
+        ["Date of birth", c.patient.dob, (v) => (c.patient.dob = v)],
+        ["Sex", c.patient.sex, (v) => (c.patient.sex = v)],
+        ["Member ID", c.patient.memberId, (v) => (c.patient.memberId = v)],
+      ]);
 
-      const providerFieldset = document.createElement("fieldset");
-      providerFieldset.className = "rh-fieldset";
-      providerFieldset.innerHTML = "<legend>Provider (placeholder)</legend>";
-      const providerGrid = document.createElement("div");
-      providerGrid.className = "field-grid";
-      providerGrid.appendChild(claimLabeledInput("Name", c.provider.name, (v) => (c.provider.name = v)));
-      providerGrid.appendChild(claimLabeledInput("NPI", c.provider.npi, (v) => (c.provider.npi = v)));
-      providerGrid.appendChild(claimLabeledInput("Address", c.provider.address, (v) => (c.provider.address = v)));
-      providerGrid.appendChild(claimLabeledInput("Date of service", c.dateOfService, (v) => (c.dateOfService = v)));
-      providerFieldset.appendChild(providerGrid);
-      claimFormEl.appendChild(providerFieldset);
+      claimFieldGrid(slots.provider, [
+        ["Name", c.provider.name, (v) => (c.provider.name = v)],
+        ["NPI", c.provider.npi, (v) => (c.provider.npi = v)],
+        ["Address", c.provider.address, (v) => (c.provider.address = v)],
+        ["Date of service", c.dateOfService, (v) => (c.dateOfService = v)],
+      ]);
 
-      const payerFieldset = document.createElement("fieldset");
-      payerFieldset.className = "rh-fieldset";
-      payerFieldset.innerHTML = "<legend>Payer (placeholder)</legend>";
-      const payerGrid = document.createElement("div");
-      payerGrid.className = "field-grid";
-      payerGrid.appendChild(claimLabeledInput("Name", c.payer.name, (v) => (c.payer.name = v)));
-      payerGrid.appendChild(claimLabeledInput("Payer ID", c.payer.payerId, (v) => (c.payer.payerId = v)));
-      payerFieldset.appendChild(payerGrid);
-      claimFormEl.appendChild(payerFieldset);
+      claimFieldGrid(slots.payer, [
+        ["Name", c.payer.name, (v) => (c.payer.name = v)],
+        ["Payer ID", c.payer.payerId, (v) => (c.payer.payerId = v)],
+      ]);
 
-      const clinicalFieldset = document.createElement("fieldset");
-      clinicalFieldset.className = "rh-fieldset";
-      clinicalFieldset.innerHTML = "<legend>Clinical summary</legend>";
-      const clinicalGrid = document.createElement("div");
-      clinicalGrid.className = "field-grid";
-      clinicalGrid.style.gridTemplateColumns = "1fr";
-      clinicalGrid.appendChild(claimLabeledInput("Chief complaint", c.chiefComplaint, (v) => (c.chiefComplaint = v)));
-      clinicalGrid.appendChild(
-        claimLabeledInput("Medical necessity notes", c.medicalNecessityNotes, (v) => (c.medicalNecessityNotes = v), true)
+      claimFieldGrid(
+        slots.clinical,
+        [
+          ["Chief complaint", c.chiefComplaint, (v) => (c.chiefComplaint = v)],
+          ["Medical necessity notes", c.medicalNecessityNotes, (v) => (c.medicalNecessityNotes = v), true],
+        ],
+        { singleColumn: true }
       );
-      clinicalFieldset.appendChild(clinicalGrid);
-      claimFormEl.appendChild(clinicalFieldset);
 
-      const diagnosesFieldset = document.createElement("fieldset");
-      diagnosesFieldset.className = "rh-fieldset";
-      diagnosesFieldset.innerHTML = "<legend>Diagnoses (ICD-10)</legend>";
-      const diagnosesContainer = document.createElement("div");
-      diagnosesFieldset.appendChild(diagnosesContainer);
       renderEditableTable(
-        diagnosesContainer,
+        slots.diagnoses,
         ["Pointer", "Code", "Description"],
         c.diagnoses,
         ["pointer", "code", "description"],
         () => c.diagnoses.push({ pointer: "", code: "", description: "" }),
         "Add diagnosis"
       );
-      claimFormEl.appendChild(diagnosesFieldset);
 
-      const linesFieldset = document.createElement("fieldset");
-      linesFieldset.className = "rh-fieldset";
-      linesFieldset.innerHTML = "<legend>Service lines (CPT)</legend>";
-      const linesContainer = document.createElement("div");
-      linesFieldset.appendChild(linesContainer);
       renderEditableTable(
-        linesContainer,
+        slots.serviceLines,
         ["Code", "Description", "Diagnosis pointer(s)", "Units"],
         c.serviceLines,
         ["code", "description", "diagnosisPointers", "units"],
         () => c.serviceLines.push({ code: "", description: "", diagnosisPointers: "", units: 1 }),
         "Add service line"
       );
-      claimFormEl.appendChild(linesFieldset);
     }
 
     // ---- Intake: patient + case selection, optional and on-demand ----
