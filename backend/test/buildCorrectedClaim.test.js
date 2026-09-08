@@ -58,6 +58,62 @@ test("dropping every line is rejected -- a claim needs at least one", () => {
   );
 });
 
+// A "diagnosis is inconsistent with the procedure" denial (CO-11) can be
+// fixed on either side of the link -- this is what real Claude-drafted
+// appeals actually suggested against a live denial (see the commit this
+// test landed in), not just a hypothetical.
+test("a suggested code also matches against diagnoses, not just service lines", () => {
+  const claim = populateClaim(facts, codes);
+  const corrected = buildCorrectedClaim(claim, [
+    { currentCode: "J02.9", suggestedCode: "J06.9", reason: "Better matches the documented symptoms" },
+  ]);
+
+  assert.deepEqual(
+    corrected.diagnoses.map((d) => d.code),
+    ["J06.9"]
+  );
+  // The pointer letter stays put -- service lines still point at the same
+  // position, just a different code now sits there.
+  assert.equal(corrected.diagnoses[0].pointer, "A");
+  assert.deepEqual(corrected.serviceLines, claim.serviceLines);
+});
+
+test("an empty suggestedCode drops a diagnosis instead of replacing it", () => {
+  const twoDiagnosisCodes = [
+    ...codes,
+    { code: "R09.81", codeType: "ICD-10", description: "Nasal congestion", supportingDiagnoses: [] },
+  ];
+  const claim = populateClaim(facts, twoDiagnosisCodes);
+  const corrected = buildCorrectedClaim(claim, [{ currentCode: "R09.81", suggestedCode: "" }]);
+
+  assert.deepEqual(
+    corrected.diagnoses.map((d) => d.code),
+    ["J02.9"]
+  );
+});
+
+test("dropping every diagnosis is rejected -- a claim needs at least one", () => {
+  const claim = populateClaim(facts, codes);
+  assert.throws(() => buildCorrectedClaim(claim, [{ currentCode: "J02.9", suggestedCode: "" }]), CorrectedClaimError);
+});
+
+test("a procedure change and a diagnosis change apply together in one pass", () => {
+  const claim = populateClaim(facts, codes);
+  const corrected = buildCorrectedClaim(claim, [
+    { currentCode: "87880", suggestedCode: "87651" },
+    { currentCode: "J02.9", suggestedCode: "J06.9" },
+  ]);
+
+  assert.deepEqual(
+    corrected.serviceLines.map((l) => l.code).sort(),
+    ["87651", "99213"]
+  );
+  assert.deepEqual(
+    corrected.diagnoses.map((d) => d.code),
+    ["J06.9"]
+  );
+});
+
 test("no changes given is rejected -- resubmitting unchanged wastes the filing window", () => {
   const claim = populateClaim(facts, codes);
   assert.throws(() => buildCorrectedClaim(claim, []), CorrectedClaimError);
