@@ -15,6 +15,7 @@ function fakeNotionClient() {
     artifacts: new Map(),
     claims: new Map(),
     documents: new Map(),
+    payerFeedback: new Map(),
   };
   let nextPageId = 1;
 
@@ -25,6 +26,7 @@ function fakeNotionClient() {
     if (dataSourceId === "ds_artifacts") return stores.artifacts;
     if (dataSourceId === "ds_claims") return stores.claims;
     if (dataSourceId === "ds_documents") return stores.documents;
+    if (dataSourceId === "ds_payer_feedback") return stores.payerFeedback;
     throw new Error(`fakeNotionClient: unknown data source '${dataSourceId}'`);
   }
 
@@ -107,6 +109,7 @@ function makeRepository() {
     artifactsDataSourceId: "ds_artifacts",
     claimsDataSourceId: "ds_claims",
     documentsDataSourceId: "ds_documents",
+    payerFeedbackDataSourceId: "ds_payer_feedback",
   });
 }
 
@@ -561,6 +564,139 @@ test("listClaimsForEncounter returns an empty array for an encounter with no cla
   const repo = makeRepository();
   const { encounter } = await makeEncounterWithClaimArtifact(repo);
   assert.deepEqual(await repo.listClaimsForEncounter(encounter.encounterId), []);
+});
+
+// A claim needs to exist before any payer feedback can attach to it.
+async function makeSubmittedClaim(repo) {
+  const { encounter, artifact } = await makeEncounterWithClaimArtifact(repo);
+  const claim = await repo.createClaim({
+    encounterId: encounter.encounterId,
+    artifactId: artifact.artifactId,
+    claimType: "original",
+    payerName: "Sample Payer Insurance",
+    memberId: "M123456",
+  });
+  await repo.updateClaimStatus(claim.claimId, "submitted");
+  return { encounter, artifact, claim };
+}
+
+test("a new claim has no payer control number until the payer sends one", async () => {
+  const repo = makeRepository();
+  const { claim } = await makeSubmittedClaim(repo);
+  assert.equal(claim.payerClaimControlNumber, null);
+
+  const updated = await repo.setPayerClaimControlNumber(claim.claimId, "2026250012345");
+  assert.equal(updated.payerClaimControlNumber, "2026250012345");
+  // And it survives a read back -- this is the field a corrected claim
+  // cannot be filed without.
+  assert.equal((await repo.getClaim(claim.claimId)).payerClaimControlNumber, "2026250012345");
+});
+
+test("setPayerClaimControlNumber rejects a claim that doesn't exist", async () => {
+  const repo = makeRepository();
+  await assert.rejects(() => repo.setPayerClaimControlNumber("CL999", "123"), NotionRepositoryError);
+});
+
+test("createPayerFeedback stores a remittance against its claim", async () => {
+  const repo = makeRepository();
+  const { claim } = await makeSubmittedClaim(repo);
+
+  const feedback = await repo.createPayerFeedback({
+    claimId: claim.claimId,
+    feedbackType: "remittance",
+    receivedAt: "2026-09-08",
+    payerClaimControlNumber: "2026250012345",
+    claimStatus: "denied",
+    recommendedRoute: "appeal",
+    amountAtRisk: 150,
+    storageRef: "blob://synthetic-835-001",
+    content: { status: "denied", findings: [{ reasonCode: "50", amount: 150 }] },
+  });
+
+  assert.equal(feedback.feedbackId, "PF001");
+  assert.equal(feedback.claimId, claim.claimId);
+  assert.equal(feedback.feedbackType, "remittance");
+  assert.equal(feedback.claimStatus, "denied");
+  assert.equal(feedback.recommendedRoute, "appeal");
+  assert.equal(feedback.amountAtRisk, 150);
+  assert.equal(feedback.storageRef, "blob://synthetic-835-001");
+  assert.equal(feedback.content.findings[0].reasonCode, "50");
+
+  assert.equal((await repo.getPayerFeedback("PF001")).claimId, claim.claimId);
+});
+
+test("an acknowledgment carries no verdict or route rather than a guessed one", async () => {
+  const repo = makeRepository();
+  const { claim } = await makeSubmittedClaim(repo);
+
+  const ack = await repo.createPayerFeedback({
+    claimId: claim.claimId,
+    feedbackType: "acknowledgment",
+    receivedAt: "2026-09-02",
+    content: { accepted: true },
+  });
+
+  assert.equal(ack.feedbackType, "acknowledgment");
+  assert.equal(ack.claimStatus, null);
+  assert.equal(ack.recommendedRoute, null);
+  assert.equal(ack.amountAtRisk, null);
+});
+
+test("createPayerFeedback rejects an unknown type or a missing claim", async () => {
+  const repo = makeRepository();
+  const { claim } = await makeSubmittedClaim(repo);
+
+  await assert.rejects(
+    () => repo.createPayerFeedback({ claimId: claim.claimId, feedbackType: "telepathy", content: {} }),
+    NotionRepositoryError
+  );
+  await assert.rejects(
+    () => repo.createPayerFeedback({ claimId: "CL999", feedbackType: "remittance", content: {} }),
+    NotionRepositoryError
+  );
+});
+
+test("listPayerFeedbackForClaim returns every document for that claim, oldest first", async () => {
+  const repo = makeRepository();
+  const { claim } = await makeSubmittedClaim(repo);
+
+  const ack = await repo.createPayerFeedback({
+    claimId: claim.claimId,
+    feedbackType: "acknowledgment",
+    receivedAt: "2026-09-02",
+    content: { accepted: true },
+  });
+  const remit = await repo.createPayerFeedback({
+    claimId: claim.claimId,
+    feedbackType: "remittance",
+    receivedAt: "2026-09-08",
+    content: { status: "denied" },
+  });
+
+  const all = await repo.listPayerFeedbackForClaim(claim.claimId);
+  assert.deepEqual(
+    all.map((f) => f.feedbackId),
+    [ack.feedbackId, remit.feedbackId]
+  );
+  assert.deepEqual(await repo.listPayerFeedbackForClaim("CL999"), []);
+});
+
+test("payer-feedback methods fail with a clear config error when the data source is unset", async () => {
+  // The env var arrived after the other six were already deployed. An
+  // unconfigured deploy has to keep working, with only these methods
+  // complaining -- not lose persistence entirely.
+  const repo = new NotionRepository({
+    client: fakeNotionClient(),
+    patientsDataSourceId: "ds_patients",
+    casesDataSourceId: "ds_cases",
+    claimsDataSourceId: "ds_claims",
+  });
+
+  await assert.rejects(
+    () => repo.createPayerFeedback({ claimId: "CL001", feedbackType: "remittance", content: {} }),
+    /payerFeedbackDataSourceId/
+  );
+  await assert.rejects(() => repo.listPayerFeedbackForClaim("CL001"), /payerFeedbackDataSourceId/);
 });
 
 test("createDocument works with and without a caseId, defaults extractionStatus to none", async () => {

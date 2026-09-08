@@ -20,6 +20,11 @@ export function createNotionRepositoryFromEnv(env = process.env) {
   const artifactsDataSourceId = env.NOTION_ARTIFACTS_DATA_SOURCE_ID;
   const claimsDataSourceId = env.NOTION_CLAIMS_DATA_SOURCE_ID;
   const documentsDataSourceId = env.NOTION_DOCUMENTS_DATA_SOURCE_ID;
+  // Deliberately not in the required list below. It arrived with the denial
+  // loop, after the other six were already configured everywhere -- making it
+  // mandatory would take persistence down entirely on any deploy that hasn't
+  // added it yet. Payer-feedback methods throw a clear config error instead.
+  const payerFeedbackDataSourceId = env.NOTION_PAYER_FEEDBACK_DATA_SOURCE_ID;
 
   const missing = [
     !apiKey && "NOTION_API_KEY",
@@ -42,6 +47,7 @@ export function createNotionRepositoryFromEnv(env = process.env) {
     artifactsDataSourceId,
     claimsDataSourceId,
     documentsDataSourceId,
+    payerFeedbackDataSourceId,
   });
 }
 

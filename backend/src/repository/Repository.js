@@ -137,6 +137,37 @@ export class Repository {
     throw new NotImplementedError("listClaimsForEncounter");
   }
 
+  /** Records the payer's own identifier for a claim (ICN/DCN), which arrives
+   *  on the 277CA or 835 rather than at submission time. A corrected claim
+   *  cannot be filed without it -- the payer reads a resubmission carrying no
+   *  control number as a duplicate and denies it.
+   *  @returns {Promise<object>} the Claim, with the control number set */
+  async setPayerClaimControlNumber(_claimId, _controlNumber) {
+    throw new NotImplementedError("setPayerClaimControlNumber");
+  }
+
+  // --- PayerFeedback (what came back after the claim was submitted) --------
+
+  /** @param {{ claimId: string, feedbackType: string, receivedAt: string,
+   *  payerClaimControlNumber?: string, claimStatus?: string,
+   *  recommendedRoute?: string, amountAtRisk?: number, storageRef?: string,
+   *  content: object }} input
+   *  @returns {Promise<object>} the created PayerFeedback */
+  async createPayerFeedback(_input) {
+    throw new NotImplementedError("createPayerFeedback");
+  }
+
+  /** @returns {Promise<object|null>} the PayerFeedback, or null if none exists */
+  async getPayerFeedback(_feedbackId) {
+    throw new NotImplementedError("getPayerFeedback");
+  }
+
+  /** @returns {Promise<object[]>} every payer document received for a claim,
+   *  oldest first */
+  async listPayerFeedbackForClaim(_claimId) {
+    throw new NotImplementedError("listPayerFeedbackForClaim");
+  }
+
   /** @returns {Promise<object[]>} the original claim plus every claim chained
    *  to it via parentClaimId, oldest first */
   async getClaimChain(_claimId) {
