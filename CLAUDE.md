@@ -123,6 +123,40 @@ caused a real crash before the defaults were added.
 
 ---
 
+## UI structure
+
+`frontend/index.html` has one set of layout primitives, defined once under
+"Shared layout primitives" in the `<style>` block. **Use them. Do not invent a
+new heading, box, or empty-state class** — if a new section needs something
+these can't express, change the primitive rather than adding a sibling.
+
+Three levels, and nothing between them:
+
+| Level | Class | Rule |
+|---|---|---|
+| Page | `.page-title` / `.page-subtitle` | **Exactly one per visible view.** Says where you are. |
+| Section | `.section-title` | Names the group directly below it. Every group gets one. |
+| Item | `.card` (+ `.card-head` / `.card-title` / `.card-subtitle`) | One thing in that group. |
+
+Plus: `.empty-state` for "there's nothing here yet" — the only one. `.tabs` /
+`.tab` / `.tabpanel` for tabbed content — the only ones; the left sidebar's
+`.nav-item` drives `.tabpanel` too.
+
+Two rules that are easy to break by accident:
+
+- **One page title per view.** A History drill-down renders its own
+  `.page-title`; that's why the root's title lives inside `#historyRoot` rather
+  than above it. Two at once means the top one is lying about where you are.
+- **A section title must not be out-sized by its own contents.** `.section-title`
+  is a small uppercase label on purpose — it groups without competing with the
+  `.card-title`s underneath it.
+
+Spacing above a section title is handled by the stylesheet
+(`.card + .section-title`), so no call site sets its own margin. JS finds
+content by `data-` hooks, not by style class, so restyling can't break behavior.
+
+---
+
 ## Working with Kaycee
 
 **Start plans with a plain-language summary**, before any technical detail: what
