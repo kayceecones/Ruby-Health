@@ -286,12 +286,17 @@ app.get("/api/activity", async (req, res) => {
       if (!(err instanceof NotionRepositoryError)) throw err;
     }
 
+    // patientId/caseId (and encounterId on a claim item) are here so the
+    // activity feed can be clicked straight through to the encounter it
+    // describes -- not just displayed as inert text.
     const encounterItems = encounters.map((e) => ({
       type: "encounter",
       id: e.encounterId,
       status: e.status,
       timestamp: e.createdAt || e.occurredAt,
+      patientId: e.patientId,
       patientName: patientsById.get(e.patientId)?.name || e.patientId,
+      caseId: e.caseId,
       caseTitle: casesById.get(e.caseId)?.title || e.caseId,
     }));
 
@@ -303,7 +308,10 @@ app.get("/api/activity", async (req, res) => {
         id: c.claimId,
         status: c.status,
         timestamp: c.submittedAt || c.createdAt,
+        patientId: encounter?.patientId || null,
         patientName: patient?.name || null,
+        caseId: encounter?.caseId || null,
+        encounterId: c.encounterId,
         payerName: c.payerName,
       };
     });

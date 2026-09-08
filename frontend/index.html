@@ -867,7 +867,43 @@
       meta.appendChild(date);
       row.appendChild(meta);
 
-      return row;
+      return historyRowLink(row, () => navigateToActivityItem(item));
+    }
+
+    // The activity feed only carries IDs and display strings, not the full
+    // patient/case/encounter objects the drill-down views need -- so a click
+    // here re-fetches them (the same lists the drill-down itself fetches)
+    // rather than duplicating that data on every activity item.
+    async function navigateToActivityItem(item) {
+      const patient =
+        historyPatients.find((p) => p.patientId === item.patientId) ||
+        (item.patientId ? { patientId: item.patientId, name: item.patientName } : null);
+      if (!patient) return; // no patient to open (e.g. an orphaned claim) -- nothing to navigate to
+
+      const encounterId = item.type === "encounter" ? item.id : item.encounterId;
+      if (!item.caseId || !encounterId) {
+        openHistoryPatient(patient);
+        return;
+      }
+
+      try {
+        const casesRes = await fetch(`/api/patients/${encodeURIComponent(item.patientId)}/cases`);
+        const casesData = await casesRes.json();
+        const caseObj = (casesData.cases || []).find((c) => c.caseId === item.caseId) || {
+          caseId: item.caseId,
+          title: item.caseTitle,
+        };
+
+        const encRes = await fetch(`/api/cases/${encodeURIComponent(item.caseId)}/encounters`);
+        const encData = await encRes.json();
+        const encounter = (encData.encounters || []).find((e) => e.encounterId === encounterId);
+
+        if (encounter) openHistoryEncounter(patient, caseObj, encounter);
+        else openHistoryCase(patient, caseObj);
+      } catch (err) {
+        console.error("Navigating from the activity feed failed:", err);
+        openHistoryPatient(patient);
+      }
     }
 
     // Shared list-loading shape for every History list (activity, patients,
