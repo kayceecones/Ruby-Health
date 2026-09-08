@@ -104,6 +104,33 @@
       font-size: 11.5px; color: var(--gold); background: rgba(184, 150, 90, 0.14); border-radius: 6px;
       padding: 6px 10px; margin-bottom: 12px; display: inline-block;
     }
+
+    /* ---- Payer response (the denial loop) ---- */
+    .payer-money { display: flex; flex-wrap: wrap; gap: 22px; margin: 4px 0 16px; }
+    .payer-money div { display: flex; flex-direction: column; gap: 2px; }
+    .payer-money .label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-2); }
+    .payer-money .value { font-size: 16px; font-weight: 700; font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+    .payer-money .value.at-risk { color: var(--garnet); }
+    .payer-route {
+      display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+      padding: 5px 11px; border-radius: 20px; margin-bottom: 14px;
+      background: rgba(219, 42, 51, 0.1); color: var(--garnet);
+    }
+    .payer-route.calm { background: rgba(184, 150, 90, 0.18); color: var(--plum); }
+    .payer-finding { padding: 12px 14px; border: 1px solid var(--border-soft); border-radius: 10px; margin-bottom: 8px; }
+    .payer-finding .head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+    .payer-finding .code { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 600; font-size: 12.5px; color: var(--plum); }
+    .payer-finding .amount { margin-left: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12.5px; font-weight: 600; }
+    .payer-finding .desc { font-size: 12.5px; margin-bottom: 6px; }
+    .payer-finding .why { font-size: 12px; color: var(--ink-2); line-height: 1.55; }
+    .payer-finding.unknown { border-style: dashed; }
+    .payer-deadline { font-size: 12px; color: var(--ink-2); margin-top: 12px; }
+    .payer-deadline .urgent { color: var(--garnet); font-weight: 600; }
+    #remittanceInput {
+      width: 100%; min-height: 120px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11.5px;
+      line-height: 1.5; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: 8px;
+      background: var(--surface); color: var(--ink); resize: vertical;
+    }
     .activity-row {
       display: flex; align-items: center; gap: 14px; padding: 14px 16px;
     }
@@ -1375,6 +1402,15 @@
       historyEncounterViewEl.appendChild(tabsRow);
       historyEncounterViewEl.appendChild(panelsWrap);
 
+      const claimsSection = document.createElement("div");
+      claimsSection.className = "history-section-title";
+      claimsSection.textContent = "Claims and payer response";
+      historyEncounterViewEl.appendChild(claimsSection);
+
+      const claimsEl = document.createElement("div");
+      historyEncounterViewEl.appendChild(claimsEl);
+      loadEncounterClaims(claimsEl, encounter, caseObj);
+
       fetch(`/api/encounters/${encodeURIComponent(encounter.encounterId)}/artifacts`)
         .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
         .then(({ ok, data }) => {
@@ -1405,6 +1441,313 @@
             panelEls[t].innerHTML = "";
             panelEls[t].appendChild(roEmpty("Couldn't load this encounter's artifacts. Is the server running?"));
           }
+        });
+    }
+
+    // ---- Payer response: what came back after a claim was submitted ----
+
+    const ROUTE_LABELS = {
+      no_action: "Nothing to do",
+      bill_patient: "Bill the patient",
+      correct_and_resubmit: "Correct and resubmit",
+      appeal: "Appeal this",
+      obtain_authorization: "Authorization needed",
+      verify_eligibility: "Check eligibility",
+      rebill_other_payer: "Bill the other payer first",
+      review_manually: "Needs a human look",
+    };
+    // Routes where nothing is actually wrong -- shown calmly rather than in
+    // alarm red, because most claims land here and a page of red is noise.
+    const CALM_ROUTES = new Set(["no_action", "bill_patient"]);
+
+    function usd(amount) {
+      return `$${Number(amount || 0).toFixed(2)}`;
+    }
+
+    function renderPayerAnalysis(analysis) {
+      const wrap = document.createElement("div");
+
+      const route = document.createElement("div");
+      route.className = "payer-route" + (CALM_ROUTES.has(analysis.recommendedRoute) ? " calm" : "");
+      route.textContent = ROUTE_LABELS[analysis.recommendedRoute] || analysis.recommendedRoute;
+      wrap.appendChild(route);
+
+      const money = document.createElement("div");
+      money.className = "payer-money";
+      const amounts = [
+        ["Billed", analysis.money.billed, ""],
+        ["Paid", analysis.money.paid, ""],
+        ["Patient owes", analysis.money.patientResponsibility, ""],
+        ["Written off", analysis.money.contractualWriteOff, ""],
+        // The number that actually matters: still recoverable.
+        ["At risk", analysis.money.atRisk, "at-risk"],
+      ];
+      for (const [label, value, cls] of amounts) {
+        const cell = document.createElement("div");
+        const l = document.createElement("span");
+        l.className = "label";
+        l.textContent = label;
+        const v = document.createElement("span");
+        v.className = "value " + cls;
+        v.textContent = usd(value);
+        cell.appendChild(l);
+        cell.appendChild(v);
+        money.appendChild(cell);
+      }
+      wrap.appendChild(money);
+
+      for (const finding of analysis.findings || []) {
+        const card = document.createElement("div");
+        card.className = "payer-finding" + (finding.known ? "" : " unknown");
+
+        const head = document.createElement("div");
+        head.className = "head";
+        const code = document.createElement("span");
+        code.className = "code";
+        code.textContent = `${finding.groupCode}-${finding.reasonCode}`;
+        head.appendChild(code);
+        if (finding.procedureCode) {
+          const proc = document.createElement("span");
+          proc.className = "activity-sub";
+          proc.textContent = `on ${finding.procedureCode}`;
+          head.appendChild(proc);
+        }
+        const amount = document.createElement("span");
+        amount.className = "amount";
+        amount.textContent = usd(finding.amount);
+        head.appendChild(amount);
+        card.appendChild(head);
+
+        const desc = document.createElement("div");
+        desc.className = "desc";
+        desc.textContent = finding.description || "Ruby does not carry this reason code.";
+        card.appendChild(desc);
+
+        const why = document.createElement("div");
+        why.className = "why";
+        why.textContent = finding.explanation;
+        card.appendChild(why);
+
+        wrap.appendChild(card);
+      }
+
+      if (analysis.unadjudicatedLines?.length) {
+        const note = document.createElement("div");
+        note.className = "payer-deadline";
+        note.textContent = `Billed but never ruled on by the payer: ${analysis.unadjudicatedLines.join(", ")}`;
+        wrap.appendChild(note);
+      }
+
+      const deadlines = analysis.deadlines || {};
+      if (deadlines.appealDeadline || deadlines.filingDeadline) {
+        const line = document.createElement("div");
+        line.className = "payer-deadline";
+        const parts = [];
+        if (deadlines.appealDeadline) {
+          parts.push(`Appeal window closes ${deadlines.appealDeadline} (${deadlines.appealDaysRemaining} days)`);
+        }
+        if (deadlines.filingDeadline) {
+          parts.push(`filing deadline ${deadlines.filingDeadline}`);
+        }
+        line.textContent = parts.join(" · ");
+        if ((deadlines.appealDaysRemaining ?? 999) < 30) line.classList.add("urgent");
+        wrap.appendChild(line);
+
+        if (deadlines.isDefault) {
+          // Never let a made-up deadline read as this payer's actual terms.
+          const caveat = document.createElement("div");
+          caveat.className = "payer-deadline";
+          caveat.textContent = "Both are common defaults, not this payer's contract -- confirm before relying on them.";
+          wrap.appendChild(caveat);
+        }
+      }
+
+      return wrap;
+    }
+
+    // Until someone confirms what Stedi returns and how to fetch it, a payer
+    // response is pasted in by hand. The same endpoint serves automatic
+    // retrieval later, so this is a stopgap on the way in, not a dead end.
+    const SAMPLE_DENIAL = {
+      payerClaimControlNumber: "2026250012345",
+      claimStatusCode: 4,
+      productionDate: "2026-09-05",
+      payerName: "Sample Payer Insurance",
+      totalClaimChargeAmount: "150.00",
+      claimPaymentAmount: "0.00",
+      serviceLines: [
+        {
+          procedureCode: "99213",
+          lineItemChargeAmount: "150.00",
+          lineItemProviderPaymentAmount: "0.00",
+          adjustments: [{ adjustmentGroupCode: "CO", adjustmentReasonCode: "50", adjustmentAmount: "150.00" }],
+          remarkCodes: ["N115"],
+        },
+      ],
+    };
+
+    function renderRecordResponse(claim, encounter, onIngested) {
+      const wrap = document.createElement("div");
+
+      const intro = document.createElement("div");
+      intro.className = "history-empty";
+      intro.style.marginBottom = "10px";
+      intro.textContent =
+        "No payer response recorded yet. Paste an 835 remittance below, or load the sample denial to see how one reads.";
+      wrap.appendChild(intro);
+
+      const input = document.createElement("textarea");
+      input.id = "remittanceInput";
+      input.placeholder = '{ "claimStatusCode": 4, ... }';
+      wrap.appendChild(input);
+
+      const status = document.createElement("div");
+      status.className = "status";
+
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex; gap:8px; margin-top:10px;";
+
+      const sampleBtn = document.createElement("button");
+      sampleBtn.type = "button";
+      sampleBtn.className = "btn";
+      sampleBtn.textContent = "Load sample denial";
+      sampleBtn.addEventListener("click", () => {
+        input.value = JSON.stringify(SAMPLE_DENIAL, null, 2);
+      });
+
+      const recordBtn = document.createElement("button");
+      recordBtn.type = "button";
+      recordBtn.className = "btn btn-primary";
+      recordBtn.textContent = "Record payer response";
+      recordBtn.addEventListener("click", async () => {
+        let payload;
+        try {
+          payload = JSON.parse(input.value);
+        } catch (err) {
+          status.textContent = "That isn't valid JSON: " + err.message;
+          status.className = "status error";
+          return;
+        }
+
+        recordBtn.disabled = true;
+        status.textContent = "Reading the payer response...";
+        status.className = "status";
+        try {
+          const res = await fetch(`/api/claims/${encodeURIComponent(claim.claimId)}/remittance`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ remittance: payload, dateOfService: encounter.occurredAt }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            status.textContent = data.error || "Could not record the payer response.";
+            status.className = "status error";
+            recordBtn.disabled = false;
+            return;
+          }
+          onIngested();
+        } catch (err) {
+          status.textContent = "Something went wrong: " + err.message;
+          status.className = "status error";
+          recordBtn.disabled = false;
+        }
+      });
+
+      row.appendChild(sampleBtn);
+      row.appendChild(recordBtn);
+      wrap.appendChild(row);
+      wrap.appendChild(status);
+      return wrap;
+    }
+
+    function renderClaimCard(claim, encounter, caseObj, reload) {
+      const card = document.createElement("div");
+      card.className = "card";
+
+      const head = document.createElement("div");
+      head.className = "history-header";
+      const title = document.createElement("h2");
+      title.style.fontSize = "15px";
+      title.textContent = `${claim.claimId} · ${claim.payerName || "Unknown payer"}`;
+      head.appendChild(title);
+      const pill = document.createElement("span");
+      pill.className = "activity-pill " + (claim.status || "");
+      pill.textContent = claim.status || "unknown";
+      head.appendChild(pill);
+      card.appendChild(head);
+
+      const sub = document.createElement("div");
+      sub.className = "history-header-sub";
+      const bits = [claim.claimType];
+      if (claim.submittedAt) bits.push(`submitted ${claim.submittedAt}`);
+      if (claim.payerClaimControlNumber) bits.push(`payer ref ${claim.payerClaimControlNumber}`);
+      sub.textContent = bits.filter(Boolean).join(" · ");
+      card.appendChild(sub);
+
+      const body = document.createElement("div");
+      body.appendChild(roEmpty("Loading payer response..."));
+      card.appendChild(body);
+
+      fetch(`/api/claims/${encodeURIComponent(claim.claimId)}/feedback`)
+        .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+        .then(({ ok, data }) => {
+          body.innerHTML = "";
+          if (!ok) {
+            body.appendChild(roEmpty(data.error || "Couldn't load the payer response."));
+            return;
+          }
+          const feedback = data.feedback || [];
+          if (feedback.length === 0) {
+            body.appendChild(renderRecordResponse(claim, encounter, reload));
+            return;
+          }
+          // Newest response wins the summary; earlier ones stay listed.
+          const latest = feedback[feedback.length - 1];
+          const analysis = latest.content?.analysis;
+          if (analysis) body.appendChild(renderPayerAnalysis(analysis));
+          else body.appendChild(roEmpty("This payer response was recorded before Ruby could read it."));
+
+          if (feedback.length > 1) {
+            const earlier = document.createElement("div");
+            earlier.className = "payer-deadline";
+            earlier.textContent = `${feedback.length} payer documents on this claim; showing the most recent.`;
+            body.appendChild(earlier);
+          }
+        })
+        .catch((err) => {
+          console.error("Loading payer feedback failed:", err);
+          body.innerHTML = "";
+          body.appendChild(roEmpty("Couldn't load the payer response. Is the server running?"));
+        });
+
+      return card;
+    }
+
+    function loadEncounterClaims(container, encounter, caseObj) {
+      const reload = () => loadEncounterClaims(container, encounter, caseObj);
+      container.innerHTML = '<div class="history-empty">Loading claims...</div>';
+
+      fetch(`/api/encounters/${encodeURIComponent(encounter.encounterId)}/claims`)
+        .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+        .then(({ ok, data }) => {
+          container.innerHTML = "";
+          if (!ok) {
+            container.appendChild(roEmpty(data.error || "Couldn't load claims for this encounter."));
+            return;
+          }
+          const claims = data.claims || [];
+          if (claims.length === 0) {
+            container.appendChild(roEmpty("No claim has been filed for this encounter yet."));
+            return;
+          }
+          for (const claim of claims) {
+            container.appendChild(renderClaimCard(claim, encounter, caseObj, reload));
+          }
+        })
+        .catch((err) => {
+          console.error("Loading encounter claims failed:", err);
+          container.innerHTML = "";
+          container.appendChild(roEmpty("Couldn't load claims. Is the server running?"));
         });
     }
 
