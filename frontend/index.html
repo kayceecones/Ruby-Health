@@ -89,6 +89,21 @@
       padding: 10px 12px; font-size: 12.5px; color: var(--garnet); margin-bottom: 8px;
     }
     .ro-transcript { white-space: pre-wrap; font-size: 13.5px; line-height: 1.65; }
+    .ro-revisions-toggle {
+      margin-top: 20px; background: none; border: none; padding: 0; font-size: 12px; font-weight: 600;
+      color: var(--ink-2); cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+    }
+    .ro-revisions-toggle:hover { color: var(--ruby); }
+    .ro-revisions-toggle::before { content: "\203A"; display: inline-block; transition: transform 0.15s ease; }
+    .ro-revisions-toggle.open::before { transform: rotate(90deg); }
+    .ro-revisions-list { margin-top: 8px; border-left: 2px solid var(--border-soft); padding-left: 12px; display: flex; flex-direction: column; gap: 4px; }
+    .ro-revision-row { background: none; border: none; padding: 3px 0; margin: 0; text-align: left; font-size: 12px; color: var(--ink-2); cursor: pointer; }
+    .ro-revision-row:hover { color: var(--ink); }
+    .ro-revision-row.selected { color: var(--ruby); font-weight: 600; }
+    .ro-version-banner {
+      font-size: 11.5px; color: var(--gold); background: rgba(184, 150, 90, 0.14); border-radius: 6px;
+      padding: 6px 10px; margin-bottom: 12px; display: inline-block;
+    }
     .activity-row {
       display: flex; align-items: center; gap: 14px; padding: 14px 16px;
     }
@@ -1255,6 +1270,61 @@
       claim: renderReadOnlyClaim,
     };
 
+    const CREATED_BY_LABELS = { system: "Ruby", provider_edit: "Provider edit" };
+
+    function formatRevisionLabel(artifact) {
+      const who = CREATED_BY_LABELS[artifact.createdBy] || artifact.createdBy || "Unknown";
+      const when = formatActivityDate(artifact.createdAt) || "unknown date";
+      return `v${artifact.version} · ${who} · ${when}`;
+    }
+
+    // Build-order step 10: version history is complete but tucked away --
+    // a quiet "N revisions" link, closed by default, rather than surfaced
+    // in the main view. versions is every artifact for one stage, newest
+    // first (see getArtifactHistory); versions[0] is what's already shown.
+    function renderVersionDisclosure(panel, versions, renderContent) {
+      if (versions.length <= 1) return;
+
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "ro-revisions-toggle";
+      toggle.textContent = `${versions.length} revisions`;
+
+      const list = document.createElement("div");
+      list.className = "ro-revisions-list";
+      list.style.display = "none";
+
+      versions.forEach((artifact, i) => {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "ro-revision-row" + (i === 0 ? " selected" : "");
+        row.textContent = formatRevisionLabel(artifact) + (i === 0 ? " (current)" : "");
+        row.addEventListener("click", () => {
+          list.querySelectorAll(".ro-revision-row").forEach((r) => r.classList.remove("selected"));
+          row.classList.add("selected");
+          const contentHost = panel.querySelector(".ro-content-host");
+          contentHost.innerHTML = "";
+          if (i !== 0) {
+            const banner = document.createElement("div");
+            banner.className = "ro-version-banner";
+            banner.textContent = `Viewing v${artifact.version} -- not the current version.`;
+            contentHost.appendChild(banner);
+          }
+          contentHost.appendChild(renderContent(artifact.content));
+        });
+        list.appendChild(row);
+      });
+
+      toggle.addEventListener("click", () => {
+        const isOpen = list.style.display !== "none";
+        list.style.display = isOpen ? "none" : "flex";
+        toggle.classList.toggle("open", !isOpen);
+      });
+
+      panel.appendChild(toggle);
+      panel.appendChild(list);
+    }
+
     function openHistoryEncounter(patient, caseObj, encounter) {
       historyState = { view: "encounter", patient, case: caseObj, encounter };
       renderHistoryBreadcrumb();
@@ -1312,13 +1382,18 @@
             }
             return;
           }
-          const latestByStage = {};
+          const versionsByStage = {};
           for (const artifact of data.history || []) {
-            if (!(artifact.stage in latestByStage)) latestByStage[artifact.stage] = artifact;
+            (versionsByStage[artifact.stage] = versionsByStage[artifact.stage] || []).push(artifact);
           }
           for (const tab of READ_TABS) {
+            const versions = versionsByStage[tab] || [];
             panelEls[tab].innerHTML = "";
-            panelEls[tab].appendChild(READ_RENDERERS[tab](latestByStage[tab]?.content));
+            const contentHost = document.createElement("div");
+            contentHost.className = "ro-content-host";
+            contentHost.appendChild(READ_RENDERERS[tab](versions[0]?.content));
+            panelEls[tab].appendChild(contentHost);
+            renderVersionDisclosure(panelEls[tab], versions, READ_RENDERERS[tab]);
           }
         })
         .catch((err) => {
