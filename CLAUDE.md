@@ -186,6 +186,15 @@ Two more rules for these views:
 - **Tabs come from `buildTabbedPanels()`.** It carries the `role="tablist"` /
   `aria-selected` wiring and arrow-key navigation. Don't hand-roll a tab strip.
 
+### Adding a field to the Facts card or Claim form
+
+Same contract on the New Claim side: the shape is a list, and the code fills
+slots by name. `FACT_FIELDS` declares the Facts card's fields (`kind` is
+`text`, `chips` or `quotes`); `CLAIM_GROUPS` declares the Claim form's
+fieldsets, filled through `renderFieldGroups()`. Adding a field or a group is
+an entry in that list — not another `appendChild` in the middle of a render
+function.
+
 ### Color
 
 `--gold` is decorative only — dots, rules, borders. It fails WCAG AA as text.

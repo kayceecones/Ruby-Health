@@ -2698,39 +2698,57 @@
       container.appendChild(field);
     }
 
+    // The Facts card's shape, declared rather than appended. Adding a field is
+    // an entry here; its position is this list's order, not wherever a call
+    // happened to sit inside renderFacts.
+    const FACT_FIELDS = [
+      { name: "chiefComplaint", label: "Chief complaint", kind: "text", placeholder: "e.g. Sore throat and fever" },
+      { name: "symptoms", label: "Symptoms", kind: "chips" },
+      { name: "diagnosesDiscussed", label: "Diagnoses discussed", kind: "chips", variant: "diagnosis" },
+      { name: "proceduresPerformed", label: "Procedures performed", kind: "chips" },
+      { name: "medicalNecessityLanguage", label: "Medical necessity language", kind: "quotes" },
+    ];
+
+    function renderChiefComplaintField(container, field, facts) {
+      const wrap = document.createElement("div");
+      wrap.className = "chip-field";
+      const label = document.createElement("div");
+      label.className = "section-title";
+      label.textContent = field.label;
+      wrap.appendChild(label);
+
+      const row = document.createElement("div");
+      row.className = "chief-complaint-row";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.id = "chiefComplaintInput";
+      input.value = facts[field.name] || "";
+      input.placeholder = field.placeholder;
+      input.addEventListener("input", () => {
+        facts[field.name] = input.value;
+        renderNav();
+      });
+      row.appendChild(input);
+      wrap.appendChild(row);
+      container.appendChild(wrap);
+    }
+
     function renderFacts() {
       factsCardEl.innerHTML = "";
       const f = state.facts;
-      if (!Array.isArray(f.symptoms)) f.symptoms = [];
-      if (!Array.isArray(f.diagnosesDiscussed)) f.diagnosesDiscussed = [];
-      if (!Array.isArray(f.proceduresPerformed)) f.proceduresPerformed = [];
-      if (!Array.isArray(f.medicalNecessityLanguage)) f.medicalNecessityLanguage = [];
+      for (const field of FACT_FIELDS) {
+        if (field.kind !== "text" && !Array.isArray(f[field.name])) f[field.name] = [];
+      }
 
-      const ccField = document.createElement("div");
-      ccField.className = "chip-field";
-      const ccEyebrow = document.createElement("div");
-      ccEyebrow.className = "section-title";
-      ccEyebrow.textContent = "Chief complaint";
-      ccField.appendChild(ccEyebrow);
-      const ccRow = document.createElement("div");
-      ccRow.className = "chief-complaint-row";
-      const ccInput = document.createElement("input");
-      ccInput.type = "text";
-      ccInput.id = "chiefComplaintInput";
-      ccInput.value = f.chiefComplaint || "";
-      ccInput.placeholder = "e.g. Sore throat and fever";
-      ccInput.addEventListener("input", () => {
-        f.chiefComplaint = ccInput.value;
-        renderNav();
-      });
-      ccRow.appendChild(ccInput);
-      ccField.appendChild(ccRow);
-      factsCardEl.appendChild(ccField);
+      for (const field of FACT_FIELDS) {
+        const slot = document.createElement("div");
+        slot.dataset.slot = field.name;
+        factsCardEl.appendChild(slot);
 
-      renderChipField(factsCardEl, "Symptoms", f.symptoms);
-      renderChipField(factsCardEl, "Diagnoses discussed", f.diagnosesDiscussed, "diagnosis");
-      renderChipField(factsCardEl, "Procedures performed", f.proceduresPerformed);
-      renderNecessityField(factsCardEl, f.medicalNecessityLanguage);
+        if (field.kind === "text") renderChiefComplaintField(slot, field, f);
+        else if (field.kind === "chips") renderChipField(slot, field.label, f[field.name], field.variant);
+        else renderNecessityField(slot, f[field.name]);
+      }
     }
 
     // ---- Codes tab: insight cards ----
@@ -3235,6 +3253,55 @@
       return label;
     }
 
+    // Same contract as renderDetailView, for the Claim tab's form: the group
+    // list decides the order, and each group is filled by name afterwards. A
+    // group with no legend is a bare slot (the warnings callout above the form).
+    function renderFieldGroups(container, groups) {
+      container.innerHTML = "";
+      const slots = {};
+      for (const group of groups) {
+        let host;
+        if (group.legend) {
+          const fieldset = document.createElement("fieldset");
+          fieldset.className = "rh-fieldset";
+          const legend = document.createElement("legend");
+          legend.textContent = group.legend;
+          fieldset.appendChild(legend);
+          host = document.createElement("div");
+          fieldset.appendChild(host);
+          container.appendChild(fieldset);
+        } else {
+          host = document.createElement("div");
+          container.appendChild(host);
+        }
+        host.dataset.slot = group.name;
+        slots[group.name] = host;
+      }
+      return slots;
+    }
+
+    // Which claim fields sit in which group. Adding a field is an entry here.
+    const CLAIM_GROUPS = [
+      // Anything that would draw a denial goes above the form, not buried in it.
+      { name: "warnings" },
+      { name: "patient", legend: "Patient (placeholder)" },
+      { name: "provider", legend: "Provider (placeholder)" },
+      { name: "payer", legend: "Payer (placeholder)" },
+      { name: "clinical", legend: "Clinical summary" },
+      { name: "diagnoses", legend: "Diagnoses (ICD-10)" },
+      { name: "serviceLines", legend: "Service lines (CPT)" },
+    ];
+
+    function claimFieldGrid(slot, fields, { singleColumn = false } = {}) {
+      const grid = document.createElement("div");
+      grid.className = "field-grid";
+      if (singleColumn) grid.style.gridTemplateColumns = "1fr";
+      for (const [label, value, onChange, multiline] of fields) {
+        grid.appendChild(claimLabeledInput(label, value, onChange, multiline));
+      }
+      slot.appendChild(grid);
+    }
+
     function renderClaimForm() {
       claimFormEl.innerHTML = "";
       if (!state.claim) {
@@ -3245,8 +3312,8 @@
         return;
       }
       const c = state.claim;
+      const slots = renderFieldGroups(claimFormEl, CLAIM_GROUPS);
 
-      // Anything that would draw a denial goes above the form, not buried in it.
       if (Array.isArray(c.warnings) && c.warnings.length > 0) {
         const warnBox = document.createElement("div");
         warnBox.className = "claim-warnings";
@@ -3262,85 +3329,54 @@
           row.appendChild(msgEl);
           warnBox.appendChild(row);
         });
-        claimFormEl.appendChild(warnBox);
+        slots.warnings.appendChild(warnBox);
       }
 
-      const patientFieldset = document.createElement("fieldset");
-      patientFieldset.className = "rh-fieldset";
-      patientFieldset.innerHTML = "<legend>Patient (placeholder)</legend>";
-      const patientGrid = document.createElement("div");
-      patientGrid.className = "field-grid";
-      patientGrid.appendChild(claimLabeledInput("Name", c.patient.name, (v) => (c.patient.name = v)));
-      patientGrid.appendChild(claimLabeledInput("Date of birth", c.patient.dob, (v) => (c.patient.dob = v)));
-      patientGrid.appendChild(claimLabeledInput("Sex", c.patient.sex, (v) => (c.patient.sex = v)));
-      patientGrid.appendChild(claimLabeledInput("Member ID", c.patient.memberId, (v) => (c.patient.memberId = v)));
-      patientFieldset.appendChild(patientGrid);
-      claimFormEl.appendChild(patientFieldset);
+      claimFieldGrid(slots.patient, [
+        ["Name", c.patient.name, (v) => (c.patient.name = v)],
+        ["Date of birth", c.patient.dob, (v) => (c.patient.dob = v)],
+        ["Sex", c.patient.sex, (v) => (c.patient.sex = v)],
+        ["Member ID", c.patient.memberId, (v) => (c.patient.memberId = v)],
+      ]);
 
-      const providerFieldset = document.createElement("fieldset");
-      providerFieldset.className = "rh-fieldset";
-      providerFieldset.innerHTML = "<legend>Provider (placeholder)</legend>";
-      const providerGrid = document.createElement("div");
-      providerGrid.className = "field-grid";
-      providerGrid.appendChild(claimLabeledInput("Name", c.provider.name, (v) => (c.provider.name = v)));
-      providerGrid.appendChild(claimLabeledInput("NPI", c.provider.npi, (v) => (c.provider.npi = v)));
-      providerGrid.appendChild(claimLabeledInput("Address", c.provider.address, (v) => (c.provider.address = v)));
-      providerGrid.appendChild(claimLabeledInput("Date of service", c.dateOfService, (v) => (c.dateOfService = v)));
-      providerFieldset.appendChild(providerGrid);
-      claimFormEl.appendChild(providerFieldset);
+      claimFieldGrid(slots.provider, [
+        ["Name", c.provider.name, (v) => (c.provider.name = v)],
+        ["NPI", c.provider.npi, (v) => (c.provider.npi = v)],
+        ["Address", c.provider.address, (v) => (c.provider.address = v)],
+        ["Date of service", c.dateOfService, (v) => (c.dateOfService = v)],
+      ]);
 
-      const payerFieldset = document.createElement("fieldset");
-      payerFieldset.className = "rh-fieldset";
-      payerFieldset.innerHTML = "<legend>Payer (placeholder)</legend>";
-      const payerGrid = document.createElement("div");
-      payerGrid.className = "field-grid";
-      payerGrid.appendChild(claimLabeledInput("Name", c.payer.name, (v) => (c.payer.name = v)));
-      payerGrid.appendChild(claimLabeledInput("Payer ID", c.payer.payerId, (v) => (c.payer.payerId = v)));
-      payerFieldset.appendChild(payerGrid);
-      claimFormEl.appendChild(payerFieldset);
+      claimFieldGrid(slots.payer, [
+        ["Name", c.payer.name, (v) => (c.payer.name = v)],
+        ["Payer ID", c.payer.payerId, (v) => (c.payer.payerId = v)],
+      ]);
 
-      const clinicalFieldset = document.createElement("fieldset");
-      clinicalFieldset.className = "rh-fieldset";
-      clinicalFieldset.innerHTML = "<legend>Clinical summary</legend>";
-      const clinicalGrid = document.createElement("div");
-      clinicalGrid.className = "field-grid";
-      clinicalGrid.style.gridTemplateColumns = "1fr";
-      clinicalGrid.appendChild(claimLabeledInput("Chief complaint", c.chiefComplaint, (v) => (c.chiefComplaint = v)));
-      clinicalGrid.appendChild(
-        claimLabeledInput("Medical necessity notes", c.medicalNecessityNotes, (v) => (c.medicalNecessityNotes = v), true)
+      claimFieldGrid(
+        slots.clinical,
+        [
+          ["Chief complaint", c.chiefComplaint, (v) => (c.chiefComplaint = v)],
+          ["Medical necessity notes", c.medicalNecessityNotes, (v) => (c.medicalNecessityNotes = v), true],
+        ],
+        { singleColumn: true }
       );
-      clinicalFieldset.appendChild(clinicalGrid);
-      claimFormEl.appendChild(clinicalFieldset);
 
-      const diagnosesFieldset = document.createElement("fieldset");
-      diagnosesFieldset.className = "rh-fieldset";
-      diagnosesFieldset.innerHTML = "<legend>Diagnoses (ICD-10)</legend>";
-      const diagnosesContainer = document.createElement("div");
-      diagnosesFieldset.appendChild(diagnosesContainer);
       renderEditableTable(
-        diagnosesContainer,
+        slots.diagnoses,
         ["Pointer", "Code", "Description"],
         c.diagnoses,
         ["pointer", "code", "description"],
         () => c.diagnoses.push({ pointer: "", code: "", description: "" }),
         "Add diagnosis"
       );
-      claimFormEl.appendChild(diagnosesFieldset);
 
-      const linesFieldset = document.createElement("fieldset");
-      linesFieldset.className = "rh-fieldset";
-      linesFieldset.innerHTML = "<legend>Service lines (CPT)</legend>";
-      const linesContainer = document.createElement("div");
-      linesFieldset.appendChild(linesContainer);
       renderEditableTable(
-        linesContainer,
+        slots.serviceLines,
         ["Code", "Description", "Diagnosis pointer(s)", "Units"],
         c.serviceLines,
         ["code", "description", "diagnosisPointers", "units"],
         () => c.serviceLines.push({ code: "", description: "", diagnosisPointers: "", units: 1 }),
         "Add service line"
       );
-      claimFormEl.appendChild(linesFieldset);
     }
 
     // ---- Intake: patient + case selection, optional and on-demand ----
