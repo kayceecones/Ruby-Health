@@ -16,7 +16,13 @@ import { upsertProviderProfile, DEFAULT_PROVIDER_ID } from "../src/providerProfi
 export const DEMO_PROVIDER_PROFILE = {
   name: "Ruby Health Demo Practice",
   npi: "1999999984", // Stedi's published test NPI
-  ein: "123456789", // placeholder -- real EIN needed before a non-test payer
+  // Enrolled with the Stedi Test Payer for 835 Claim payment (see
+  // reference/../docs -- providers-test-claims-workflow) under this exact
+  // tax ID. A claim must carry the tax ID it was enrolled with to generate
+  // a test 835 ERA; the old "123456789" placeholder was never enrolled with
+  // anything and is exactly the kind of value likely to collide with other
+  // Stedi accounts' test data anyway.
+  ein: "462871953",
   taxonomyCode: "207Q00000X", // Family Medicine
   address: {
     address1: "500 Health Way",
