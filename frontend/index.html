@@ -514,7 +514,10 @@
     <div id="main">
       <div id="patientCaseBar">
         <span id="patientCaseLabel">No patient selected -- will save under "unidentified patient" once you extract facts.</span>
-        <button id="openIntakeBtn" class="btn" type="button">Select patient / case</button>
+        <div style="display: flex; gap: 8px;">
+          <button id="openIntakeBtn" class="btn" type="button">Select patient / case</button>
+          <button id="startNewEncounterBtn" class="btn" type="button">Start new encounter</button>
+        </div>
       </div>
 
       <div id="panelTranscript" class="panel">
@@ -2575,6 +2578,61 @@
     function closeIntakeModal() {
       intakeModalEl.classList.remove("open");
     }
+
+    // Nothing else ever clears state.patientId/caseId/encounterId --
+    // sessionStorage keeps them for as long as the tab stays open. Without
+    // an explicit way to drop them, typing a second, unrelated transcript
+    // in the same tab silently attaches it (as a new version) to whichever
+    // encounter was already active, instead of starting a real new one.
+    const startNewEncounterBtn = document.getElementById("startNewEncounterBtn");
+
+    function hasEncounterProgress() {
+      return Boolean(
+        state.patientId || state.encounterId || state.transcript.trim() || hasFacts() || state.codes.length > 0 || state.claim
+      );
+    }
+
+    function resetEncounterState() {
+      state.patientId = null;
+      state.patientName = "";
+      state.caseId = null;
+      state.caseTitle = "";
+      state.encounterId = null;
+      state.transcript = "";
+      state.transcriptSummary = "";
+      state.facts = { chiefComplaint: "", symptoms: [], diagnosesDiscussed: [], proceduresPerformed: [], medicalNecessityLanguage: [] };
+      state.codes = [];
+      state.claim = null;
+      state.reviewed = false;
+      state.stediSubmission = null;
+
+      transcriptEl.value = "";
+      for (const el of [cleanupStatusEl, extractStatusEl, codesStatusEl, claimStatusEl, stediStatusEl]) {
+        el.textContent = "";
+        el.className = "status";
+      }
+
+      renderTranscriptSummary();
+      renderFacts();
+      renderCodes();
+      renderClaimForm();
+      applyReviewUiState();
+      updatePatientCaseBar();
+      showTab("transcript");
+    }
+
+    startNewEncounterBtn.addEventListener("click", () => {
+      if (
+        hasEncounterProgress() &&
+        !confirm(
+          "Start a new encounter? This clears the transcript, facts, codes, and claim on screen. " +
+            "Anything already extracted or saved is still in History -- this only resets what you're working on now."
+        )
+      ) {
+        return;
+      }
+      resetEncounterState();
+    });
 
     openIntakeBtn.addEventListener("click", openIntakeModal);
     closeIntakeBtn.addEventListener("click", closeIntakeModal);
