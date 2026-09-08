@@ -1605,6 +1605,29 @@
       "IEA*1*000000010~",
     ].join("\n");
 
+    // A coding problem, not a documentation one -- CO-11 (diagnosis
+    // inconsistent with the procedure) routes to "correct and resubmit"
+    // rather than "appeal", so this is what surfaces the corrected-claim
+    // action (step 7) rather than an appeal letter.
+    const SAMPLE_CODING_ERROR_DENIAL = [
+      "ISA*00*          *00*          *ZZ*STEDITEST      *ZZ*134129016687   *260908*1907*^*00501*000000010*0*T*`~",
+      "GS*HP*STEDITEST*134129016687*20260908*190744*10*X*005010X221A1~",
+      "ST*835*0001~",
+      "BPR*I*0*C*ACH************20260905~",
+      "TRN*1*trace*1234567891~",
+      "DTM*405*20260905~",
+      "N1*PR*Sample Payer Insurance*XV*SAMPLE~",
+      "LX*1~",
+      "CLP*ruby-2*4*150*0*0*ZZ*2026250099999*11*1~",
+      "DTM*232*20260905~",
+      "SVC*HC`99213*150*0**1*HC`99213*1~",
+      "DTM*472*20260905~",
+      "CAS*CO*11*150~",
+      "SE*19*0001~",
+      "GE*1*10~",
+      "IEA*1*000000010~",
+    ].join("\n");
+
     function renderRecordResponse(claim, encounter, onIngested) {
       const wrap = document.createElement("div");
 
@@ -1632,6 +1655,14 @@
       sampleBtn.textContent = "Load sample denial";
       sampleBtn.addEventListener("click", () => {
         input.value = SAMPLE_DENIAL;
+      });
+
+      const codingSampleBtn = document.createElement("button");
+      codingSampleBtn.type = "button";
+      codingSampleBtn.className = "btn";
+      codingSampleBtn.textContent = "Load sample coding-error denial";
+      codingSampleBtn.addEventListener("click", () => {
+        input.value = SAMPLE_CODING_ERROR_DENIAL;
       });
 
       const recordBtn = document.createElement("button");
@@ -1671,6 +1702,7 @@
       });
 
       row.appendChild(sampleBtn);
+      row.appendChild(codingSampleBtn);
       row.appendChild(recordBtn);
       wrap.appendChild(row);
       wrap.appendChild(status);
