@@ -530,6 +530,39 @@ test("getClaimChain rejects a claimId that doesn't exist", async () => {
   await assert.rejects(() => repo.getClaimChain("CL999"), NotionRepositoryError);
 });
 
+test("listClaimsForEncounter returns every claim on an encounter, oldest first", async () => {
+  const repo = makeRepository();
+  const { encounter, artifact } = await makeEncounterWithClaimArtifact(repo);
+
+  const original = await repo.createClaim({
+    encounterId: encounter.encounterId,
+    artifactId: artifact.artifactId,
+    claimType: "original",
+    payerName: "Sample Payer Insurance",
+    memberId: "M123456",
+  });
+  const corrected = await repo.createClaim({
+    encounterId: encounter.encounterId,
+    artifactId: artifact.artifactId,
+    claimType: "corrected",
+    parentClaimId: original.claimId,
+    payerName: "Sample Payer Insurance",
+    memberId: "M123456",
+  });
+
+  const claims = await repo.listClaimsForEncounter(encounter.encounterId);
+  assert.deepEqual(
+    claims.map((c) => c.claimId),
+    [original.claimId, corrected.claimId],
+  );
+});
+
+test("listClaimsForEncounter returns an empty array for an encounter with no claims", async () => {
+  const repo = makeRepository();
+  const { encounter } = await makeEncounterWithClaimArtifact(repo);
+  assert.deepEqual(await repo.listClaimsForEncounter(encounter.encounterId), []);
+});
+
 test("createDocument works with and without a caseId, defaults extractionStatus to none", async () => {
   const repo = makeRepository();
   const { patient, case: c } = await makeCase(repo);

@@ -164,11 +164,46 @@ async function autoProvisionEncounter(facts) {
   }
 }
 
+// Encounters are optional at the repository level (see NotionRepository's
+// constructor), so anything computing "last activity" or a visit count from
+// them needs to degrade to "no encounters" rather than fail outright.
+async function listEncountersForCaseSafe(caseId) {
+  try {
+    return await repository.listEncountersForCase(caseId);
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) return [];
+    throw err;
+  }
+}
+
+function latestTimestamp(timestamps) {
+  const present = timestamps.filter(Boolean);
+  return present.length ? present.sort().at(-1) : null;
+}
+
 app.get("/api/patients", async (_req, res) => {
   if (!requireRepository(res)) return;
   try {
     const patients = await repository.listPatients();
-    res.json({ patients });
+    // The History patient list needs open-case count and last-activity per
+    // row; every other caller of this endpoint (patient search in the New
+    // Claim intake step) just ignores the extra fields.
+    const enriched = await Promise.all(
+      patients.map(async (patient) => {
+        const cases = await repository.listCasesForPatient(patient.patientId);
+        const encounterLists = await Promise.all(cases.map((c) => listEncountersForCaseSafe(c.caseId)));
+        const encounters = encounterLists.flat();
+        return {
+          ...patient,
+          openCaseCount: cases.filter((c) => c.status === "open").length,
+          lastActivity: latestTimestamp([
+            ...encounters.map((e) => e.createdAt || e.occurredAt),
+            ...cases.map((c) => c.openedAt),
+          ]),
+        };
+      })
+    );
+    res.json({ patients: enriched });
   } catch (err) {
     console.error("Listing patients failed:", err);
     res.status(502).json({ error: "Listing patients failed. See server logs for details." });
@@ -192,14 +227,131 @@ app.post("/api/patients", async (req, res) => {
   }
 });
 
+// The History activity view's data source: recent encounters and recently
+// submitted claims, newest first, across every patient. There's no single
+// Notion query for "everything recent" -- foreign keys are plain-text IDs,
+// not Notion relations (see NotionRepository.js), so this composes the
+// existing per-parent list methods instead of adding Notion-specific query
+// logic. Fine at demo volume; a Postgres repository would answer this with
+// one indexed query instead.
+app.get("/api/activity", async (req, res) => {
+  if (!requireRepository(res)) return;
+  const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+
+  try {
+    const patients = await repository.listPatients();
+    const patientsById = new Map(patients.map((p) => [p.patientId, p]));
+
+    const caseLists = await Promise.all(patients.map((p) => repository.listCasesForPatient(p.patientId)));
+    const cases = caseLists.flat();
+    const casesById = new Map(cases.map((c) => [c.caseId, c]));
+
+    const encounterLists = await Promise.all(cases.map((c) => repository.listEncountersForCase(c.caseId)));
+    const encounters = encounterLists.flat();
+    const encountersById = new Map(encounters.map((e) => [e.encounterId, e]));
+
+    // Claims require the claims data source to be configured, unlike
+    // patients/cases/encounters -- degrade to "no claim activity" rather
+    // than failing the whole feed when it isn't.
+    let claims = [];
+    try {
+      const claimLists = await Promise.all(encounters.map((e) => repository.listClaimsForEncounter(e.encounterId)));
+      claims = claimLists.flat();
+    } catch (err) {
+      if (!(err instanceof NotionRepositoryError)) throw err;
+    }
+
+    const encounterItems = encounters.map((e) => ({
+      type: "encounter",
+      id: e.encounterId,
+      status: e.status,
+      timestamp: e.createdAt || e.occurredAt,
+      patientName: patientsById.get(e.patientId)?.name || e.patientId,
+      caseTitle: casesById.get(e.caseId)?.title || e.caseId,
+    }));
+
+    const claimItems = claims.map((c) => {
+      const encounter = encountersById.get(c.encounterId);
+      const patient = encounter ? patientsById.get(encounter.patientId) : null;
+      return {
+        type: "claim",
+        id: c.claimId,
+        status: c.status,
+        timestamp: c.submittedAt || c.createdAt,
+        patientName: patient?.name || null,
+        payerName: c.payerName,
+      };
+    });
+
+    const activity = [...encounterItems, ...claimItems]
+      .filter((item) => item.timestamp)
+      .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""))
+      .slice(0, limit);
+
+    res.json({ activity });
+  } catch (err) {
+    console.error("Building activity feed failed:", err);
+    res.status(502).json({ error: "Building activity feed failed. See server logs for details." });
+  }
+});
+
 app.get("/api/patients/:patientId/cases", async (req, res) => {
   if (!requireRepository(res)) return;
   try {
     const cases = await repository.listCasesForPatient(req.params.patientId);
-    res.json({ cases });
+    // The History patient view needs a visit count and last-activity per
+    // case row; the New Claim intake step's case picker ignores the extras.
+    const enriched = await Promise.all(
+      cases.map(async (c) => {
+        const encounters = await listEncountersForCaseSafe(c.caseId);
+        return {
+          ...c,
+          visitCount: encounters.length,
+          lastActivity: latestTimestamp([...encounters.map((e) => e.createdAt || e.occurredAt), c.openedAt]),
+        };
+      })
+    );
+    res.json({ cases: enriched });
   } catch (err) {
     console.error("Listing cases failed:", err);
     res.status(502).json({ error: "Listing cases failed. See server logs for details." });
+  }
+});
+
+// The History case view's encounter list -- chronological, per build-order
+// step 8. listEncountersForCase already sorts oldest-first (see
+// NotionRepository.js); this is a thin wrapper, same shape as the other
+// GET endpoints above.
+app.get("/api/cases/:caseId/encounters", async (req, res) => {
+  if (!requireRepository(res)) return;
+  try {
+    const encounters = await repository.listEncountersForCase(req.params.caseId);
+    res.json({ encounters });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Listing encounters failed:", err);
+    res.status(502).json({ error: "Listing encounters failed. See server logs for details." });
+  }
+});
+
+// Build-order step 9: the History encounter view reads this to show the
+// 4-tab UI in read mode, against what was actually persisted, instead of
+// running the live pipeline. Returns every version of every stage -- the
+// frontend picks the latest per stage for now; step 10's version-history
+// disclosure needs the same data, so this endpoint doesn't change then.
+app.get("/api/encounters/:encounterId/artifacts", async (req, res) => {
+  if (!requireRepository(res)) return;
+  try {
+    const history = await repository.getArtifactHistory(req.params.encounterId);
+    res.json({ history });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Loading artifact history failed:", err);
+    res.status(502).json({ error: "Loading artifact history failed. See server logs for details." });
   }
 });
 
@@ -391,8 +543,31 @@ app.post("/api/provider-profile", (req, res) => {
   }
 });
 
+// Best-effort, same as persistArtifact: recording that a claim was actually
+// submitted is what makes it show up in the History activity view, but a
+// failure here shouldn't turn a successful Stedi submission into an error
+// response. Requires the claim-stage artifact to already be persisted (it
+// is, by /api/populate-claim) since Claim rows point at it.
+async function persistSubmittedClaim(encounterId, claim) {
+  if (!repository || !encounterId) return;
+  try {
+    const artifact = await repository.getLatestArtifact(encounterId, "claim");
+    if (!artifact) return;
+    const created = await repository.createClaim({
+      encounterId,
+      artifactId: artifact.artifactId,
+      claimType: "original",
+      payerName: claim.payer?.name || "Unknown payer",
+      memberId: claim.patient?.memberId || "Unknown member",
+    });
+    await repository.updateClaimStatus(created.claimId, "submitted");
+  } catch (err) {
+    console.error(`Persisting submitted claim for encounter '${encounterId}' failed:`, err);
+  }
+}
+
 app.post("/api/submit-claim", async (req, res) => {
-  const { claim } = req.body || {};
+  const { claim, encounterId } = req.body || {};
 
   if (!claim || typeof claim !== "object") {
     return res.status(400).json({ error: "Request body must include a 'claim' object (the populated claim)." });
@@ -417,6 +592,7 @@ app.post("/api/submit-claim", async (req, res) => {
 
   try {
     const stediResponse = await submitToStedi(stediClaim, STEDI_API_KEY);
+    await persistSubmittedClaim(encounterId, claim);
     res.json({ stediClaim, stediResponse });
   } catch (err) {
     if (err instanceof StediSubmissionError) {

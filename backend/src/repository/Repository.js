@@ -131,6 +131,12 @@ export class Repository {
     throw new NotImplementedError("updateClaimStatus");
   }
 
+  /** @returns {Promise<object[]>} every Claim attached to an encounter
+   *  (original, corrected, secondary alike), oldest first */
+  async listClaimsForEncounter(_encounterId) {
+    throw new NotImplementedError("listClaimsForEncounter");
+  }
+
   /** @returns {Promise<object[]>} the original claim plus every claim chained
    *  to it via parentClaimId, oldest first */
   async getClaimChain(_claimId) {
