@@ -25,11 +25,17 @@ const BACKEND_DIR = path.join(__dirname, "..");
 const PORT = process.env.SMOKE_PORT || 3202;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
+// A plain office visit, deliberately -- not a lab test. Stedi's sandbox
+// validates claims synchronously on submission and rejects a lab code
+// (87880, a strep test) with "Missing CLIA Number" before it ever reaches
+// adjudication, since the synthetic demo provider carries no CLIA
+// certification. 99213 (established-patient office visit) has no such
+// requirement, so it's the one that actually gets past the front door.
 const SAMPLE_ENCOUNTER = {
   facts: { chiefComplaint: "Sore throat" },
   codes: [
     { code: "J02.9", codeType: "ICD-10", description: "Acute pharyngitis", supportingDiagnoses: [] },
-    { code: "87880", codeType: "CPT", description: "Strep test", supportingDiagnoses: ["J02.9"] },
+    { code: "99213", codeType: "CPT", description: "Office visit, established patient", supportingDiagnoses: ["J02.9"] },
   ],
 };
 

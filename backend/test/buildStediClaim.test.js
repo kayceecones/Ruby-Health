@@ -124,6 +124,23 @@ test("claim charge amount is the per-line rate times service line count", () => 
   assert.equal(stediClaim.claimInformation.claimChargeAmount, "100.00"); // 2 CPT lines * $50
 });
 
+test("defaults to claim frequency code 1 (original) with no original reference number", () => {
+  const claim = populateClaim(facts, codes);
+  const stediClaim = buildStediClaim(claim);
+  assert.equal(stediClaim.claimInformation.claimFrequencyCode, "1");
+  assert.equal("originalReferenceNumber" in stediClaim.claimInformation, false);
+});
+
+test("a corrected resubmission carries frequency code 7 and the payer's control number", () => {
+  const claim = populateClaim(facts, codes);
+  const stediClaim = buildStediClaim(claim, {
+    claimFrequencyCode: "7",
+    originalReferenceNumber: "2026250012345",
+  });
+  assert.equal(stediClaim.claimInformation.claimFrequencyCode, "7");
+  assert.equal(stediClaim.claimInformation.originalReferenceNumber, "2026250012345");
+});
+
 test("rejects a claim with no diagnoses", () => {
   assert.throws(() => buildStediClaim({ diagnoses: [], serviceLines: [{ code: "1" }] }), StediMappingError);
 });

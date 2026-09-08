@@ -25,6 +25,7 @@ const CREATED_BY_VALUES = ["system", "provider_edit"];
 const CLAIM_TYPES = ["original", "corrected", "secondary"];
 const CLAIM_STATUSES = ["draft", "submitted", "accepted", "denied", "pending"];
 const DOCUMENT_SOURCES = ["upload", "fax", "ehr_sync"];
+const FEEDBACK_TYPES = ["acknowledgment", "remittance"];
 
 function titleText(page, property) {
   return page.properties[property]?.title?.[0]?.plain_text || "";
@@ -121,6 +122,31 @@ function parseClaim(page) {
     memberId: richText(page, "member_id"),
     status: selectValue(page, "status"),
     submittedAt: dateValue(page, "submitted_at"),
+    // Assigned by the payer, so it is empty until a 277CA or 835 comes back.
+    payerClaimControlNumber: richText(page, "payer_claim_control_number") || null,
+    createdAt: page.properties.created_at?.created_time || page.created_time || null,
+  };
+}
+
+function parsePayerFeedback(page) {
+  const raw = richTextAll(page, "content");
+  let content = null;
+  try {
+    content = raw ? JSON.parse(raw) : null;
+  } catch {
+    content = raw;
+  }
+  return {
+    feedbackId: titleText(page, "feedback_id"),
+    claimId: richText(page, "claim_id"),
+    feedbackType: selectValue(page, "feedback_type"),
+    receivedAt: dateValue(page, "received_at"),
+    payerClaimControlNumber: richText(page, "payer_claim_control_number") || null,
+    claimStatus: selectValue(page, "claim_status"),
+    recommendedRoute: selectValue(page, "recommended_route"),
+    amountAtRisk: numberValue(page, "amount_at_risk"),
+    storageRef: richText(page, "storage_ref") || null,
+    content,
     createdAt: page.properties.created_at?.created_time || page.created_time || null,
   };
 }
@@ -165,6 +191,7 @@ export class NotionRepository extends Repository {
     artifactsDataSourceId,
     claimsDataSourceId,
     documentsDataSourceId,
+    payerFeedbackDataSourceId,
   }) {
     super();
     if (!client) throw new NotionRepositoryError("NotionRepository requires a Notion client.");
@@ -177,6 +204,7 @@ export class NotionRepository extends Repository {
     this.artifactsDataSourceId = artifactsDataSourceId;
     this.claimsDataSourceId = claimsDataSourceId;
     this.documentsDataSourceId = documentsDataSourceId;
+    this.payerFeedbackDataSourceId = payerFeedbackDataSourceId;
   }
 
   _requireEncountersDataSource() {
@@ -200,6 +228,12 @@ export class NotionRepository extends Repository {
   _requireDocumentsDataSource() {
     if (!this.documentsDataSourceId) {
       throw new NotionRepositoryError("NotionRepository was not configured with documentsDataSourceId.");
+    }
+  }
+
+  _requirePayerFeedbackDataSource() {
+    if (!this.payerFeedbackDataSourceId) {
+      throw new NotionRepositoryError("NotionRepository was not configured with payerFeedbackDataSourceId.");
     }
   }
 
@@ -456,6 +490,77 @@ export class NotionRepository extends Repository {
       rich_text: { equals: encounterId },
     });
     return pages.map(parseClaim).sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+  }
+
+  async setPayerClaimControlNumber(claimId, controlNumber) {
+    this._requireClaimsDataSource();
+    const page = await this._findByTitle(this.claimsDataSourceId, "claim_id", claimId);
+    if (!page) throw new NotionRepositoryError(`No claim found with claim_id '${claimId}'.`);
+
+    const updated = await this.client.pages.update({
+      page_id: page.id,
+      properties: { payer_claim_control_number: { rich_text: [{ text: { content: controlNumber || "" } }] } },
+    });
+    return parseClaim(updated);
+  }
+
+  async createPayerFeedback({
+    claimId,
+    feedbackType,
+    receivedAt,
+    payerClaimControlNumber,
+    claimStatus,
+    recommendedRoute,
+    amountAtRisk,
+    storageRef,
+    content,
+  }) {
+    this._requirePayerFeedbackDataSource();
+    if (!claimId) throw new NotionRepositoryError("createPayerFeedback requires a claimId.");
+    if (!FEEDBACK_TYPES.includes(feedbackType)) {
+      throw new NotionRepositoryError(`createPayerFeedback feedbackType must be one of: ${FEEDBACK_TYPES.join(", ")}.`);
+    }
+
+    const claim = await this.getClaim(claimId);
+    if (!claim) throw new NotionRepositoryError(`No claim found with claim_id '${claimId}'.`);
+
+    const feedbackId = await this._nextSequentialId(this.payerFeedbackDataSourceId, "feedback_id", "PF");
+    const properties = {
+      feedback_id: { title: [{ text: { content: feedbackId } }] },
+      claim_id: { rich_text: [{ text: { content: claimId } }] },
+      feedback_type: { select: { name: feedbackType } },
+      received_at: { date: { start: receivedAt || new Date().toISOString().slice(0, 10) } },
+      payer_claim_control_number: { rich_text: [{ text: { content: payerClaimControlNumber || "" } }] },
+      storage_ref: { rich_text: [{ text: { content: storageRef || "" } }] },
+      content: { rich_text: chunkedRichText(JSON.stringify(content ?? null)) },
+    };
+    // Left unset rather than guessed at: an acknowledgment carries no verdict
+    // or route, and an empty select reads as "not applicable" rather than
+    // implying one was computed.
+    if (claimStatus) properties.claim_status = { select: { name: claimStatus } };
+    if (recommendedRoute) properties.recommended_route = { select: { name: recommendedRoute } };
+    if (typeof amountAtRisk === "number") properties.amount_at_risk = { number: amountAtRisk };
+
+    const page = await this.client.pages.create({
+      parent: { data_source_id: this.payerFeedbackDataSourceId },
+      properties,
+    });
+    return parsePayerFeedback(page);
+  }
+
+  async getPayerFeedback(feedbackId) {
+    this._requirePayerFeedbackDataSource();
+    const page = await this._findByTitle(this.payerFeedbackDataSourceId, "feedback_id", feedbackId);
+    return page ? parsePayerFeedback(page) : null;
+  }
+
+  async listPayerFeedbackForClaim(claimId) {
+    this._requirePayerFeedbackDataSource();
+    const pages = await this._queryAll(this.payerFeedbackDataSourceId, {
+      property: "claim_id",
+      rich_text: { equals: claimId },
+    });
+    return pages.map(parsePayerFeedback).sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
   }
 
   // A "chain" is every claim connected to a given one via parent_claim_id --

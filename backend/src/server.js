@@ -10,11 +10,16 @@ import { suggestCodes } from "./pipeline/suggestCodes.js";
 import { populateClaim, ClaimError } from "./pipeline/populateClaim.js";
 import { verifyNecessityQuotes } from "./pipeline/verifyQuotes.js";
 import { buildStediClaim, StediMappingError } from "./pipeline/buildStediClaim.js";
+import { buildCorrectedClaim, CorrectedClaimError } from "./pipeline/buildCorrectedClaim.js";
 import { submitToStedi, StediSubmissionError } from "./pipeline/submitToStedi.js";
 import { annotateValidation, unrecognisedCodes } from "./pipeline/validateCodes.js";
 import { usageTotals } from "./usage.js";
 import { loadCodeSet } from "../../reference/loadCodes.mjs";
-import { createNotionRepositoryFromEnv, NotionRepositoryError } from "./repository/index.js";
+import { createNotionRepositoryFromEnv, createBlobStoreFromEnv, NotionRepositoryError } from "./repository/index.js";
+import { RemittanceParseError } from "./pipeline/parseRemittance.js";
+import { ingestRemittance, RemittanceIngestError } from "./pipeline/ingestRemittance.js";
+import { draftAppeal } from "./pipeline/draftAppeal.js";
+import { loadAdjustmentCodes } from "../../reference/loadAdjustmentCodes.mjs";
 import {
   getProviderProfile,
   upsertProviderProfile,
@@ -66,6 +71,26 @@ try {
 } catch (err) {
   console.warn("Notion repository not configured -- patient/case persistence disabled:", err.message);
 }
+
+// The raw payer document goes to blob storage rather than into a Notion row --
+// files don't belong in Notion, which is the whole reason the BlobStore seam
+// exists. Same ephemeral-disk caveat as provider profiles: on Render the
+// stored document does not survive a redeploy, so a storageRef can dangle.
+// Production swaps in Aptible-managed storage behind the same interface.
+const blobStore = createBlobStoreFromEnv();
+
+// Reason codes for the denial loop. Committed with the repo, unlike the
+// billing code set, so this is expected to load -- but a failure degrades to
+// "every code unrecognised" rather than taking denial handling down.
+let adjustmentCodes = { carc: new Map(), rarc: new Map(), groupCodes: {}, loaded: false };
+loadAdjustmentCodes()
+  .then((loaded) => {
+    adjustmentCodes = loaded;
+    if (!loaded.loaded) {
+      console.warn("Could not load reference/adjustment-codes.json -- denial reasons will show as raw codes.");
+    }
+  })
+  .catch((err) => console.warn("Could not load adjustment codes:", err.message));
 
 // Loaded once at boot. Absent or empty is fine: validation reports "unchecked"
 // rather than failing, so a fresh clone with no reference files still runs.
@@ -452,6 +477,122 @@ app.post("/api/encounters/:encounterId/status", async (req, res) => {
   }
 });
 
+// --- The denial loop: what came back from the payer -----------------------
+
+app.post("/api/claims/:claimId/remittance", async (req, res) => {
+  if (!requireRepository(res)) return;
+  const { remittance, dateOfService, submittedClaim } = req.body || {};
+
+  if (!remittance) {
+    return res.status(400).json({ error: "Request body must include a 'remittance' field (the payer's raw 835 EDI document)." });
+  }
+
+  try {
+    const result = await ingestRemittance({
+      repository,
+      blobStore,
+      adjustmentCodes,
+      claimId: req.params.claimId,
+      remittance,
+      dateOfService,
+      submittedClaim,
+    });
+    res.json(result);
+  } catch (err) {
+    if (err instanceof RemittanceIngestError) {
+      return res.status(err.status).json({ error: err.message });
+    }
+    if (err instanceof RemittanceParseError || err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Ingesting remittance failed:", err);
+    res.status(502).json({ error: "Ingesting remittance failed. See server logs for details." });
+  }
+});
+
+// The one model call in the denial loop. Everything before it is arithmetic;
+// this reads the denial against what actually happened in the room.
+app.post("/api/claims/:claimId/appeal", async (req, res) => {
+  if (!requireRepository(res)) return;
+
+  if (!anthropic) {
+    return res.status(500).json({
+      error: "ANTHROPIC_API_KEY is not configured on the server. Add it to backend/.env and restart.",
+    });
+  }
+
+  try {
+    const claim = await repository.getClaim(req.params.claimId);
+    if (!claim) return res.status(404).json({ error: `No claim found with claim_id '${req.params.claimId}'.` });
+
+    const feedback = await repository.listPayerFeedbackForClaim(claim.claimId);
+    const latest = feedback[feedback.length - 1];
+    const analysis = latest?.content?.analysis;
+    if (!analysis) {
+      return res.status(400).json({ error: "No payer response has been recorded for this claim yet." });
+    }
+
+    // The appeal is built out of the encounter record, so it needs the record.
+    const [transcriptArtifact, factsArtifact, codesArtifact] = await Promise.all([
+      repository.getLatestArtifact(claim.encounterId, "transcript"),
+      repository.getLatestArtifact(claim.encounterId, "facts"),
+      repository.getLatestArtifact(claim.encounterId, "codes"),
+    ]);
+
+    const transcript = transcriptArtifact?.content?.transcript || "";
+    if (!transcript.trim()) {
+      return res.status(400).json({
+        error: "This encounter has no transcript on file, so there is nothing to ground an appeal in.",
+      });
+    }
+
+    const draft = await draftAppeal(anthropic, MODEL, {
+      analysis,
+      facts: factsArtifact?.content || null,
+      transcript,
+      codes: codesArtifact?.content || [],
+    });
+
+    res.json({ draft });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Drafting an appeal failed:", err);
+    res.status(502).json({ error: "Drafting an appeal failed. See server logs for details." });
+  }
+});
+
+app.get("/api/claims/:claimId/feedback", async (req, res) => {
+  if (!requireRepository(res)) return;
+  try {
+    const feedback = await repository.listPayerFeedbackForClaim(req.params.claimId);
+    res.json({ feedback });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Listing payer feedback failed:", err);
+    res.status(502).json({ error: "Listing payer feedback failed. See server logs for details." });
+  }
+});
+
+// The History encounter view needs a claim's status and denial state next to
+// the artifacts it was built from.
+app.get("/api/encounters/:encounterId/claims", async (req, res) => {
+  if (!requireRepository(res)) return;
+  try {
+    const claims = await repository.listClaimsForEncounter(req.params.encounterId);
+    res.json({ claims });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Listing claims for encounter failed:", err);
+    res.status(502).json({ error: "Listing claims failed. See server logs for details." });
+  }
+});
+
 app.post("/api/extract", async (req, res) => {
   const { transcript, encounterId } = req.body || {};
 
@@ -693,6 +834,92 @@ app.post("/api/submit-claim", async (req, res) => {
     }
     console.error("Stedi submission failed:", err);
     res.status(502).json({ error: "Stedi submission failed. See server logs for details.", stediClaim });
+  }
+});
+
+// Step 7 of the denial loop: a corrected claim, chained to the one it
+// replaces. Filed as its own Claim row (claimType "corrected", parentClaimId
+// pointing at the original) so History shows the pair rather than the
+// correction silently overwriting what was submitted before.
+app.post("/api/claims/:claimId/resubmit", async (req, res) => {
+  if (!requireRepository(res)) return;
+
+  const { suggestedCodeChanges } = req.body || {};
+  if (!Array.isArray(suggestedCodeChanges) || suggestedCodeChanges.length === 0) {
+    return res.status(400).json({ error: "Request body must include a non-empty 'suggestedCodeChanges' array." });
+  }
+
+  if (!STEDI_API_KEY) {
+    return res.status(500).json({
+      error: "STEDI_API_KEY is not configured on the server. Add it to backend/.env and restart.",
+    });
+  }
+
+  try {
+    const original = await repository.getClaim(req.params.claimId);
+    if (!original) return res.status(404).json({ error: `No claim found with claim_id '${req.params.claimId}'.` });
+
+    // Without this, the payer reads the resubmission as a brand-new claim
+    // and denies it as a duplicate -- record the remittance first.
+    if (!original.payerClaimControlNumber) {
+      return res.status(400).json({
+        error: "This claim has no payer claim control number on file yet. Record the payer's remittance before filing a correction.",
+      });
+    }
+
+    const artifact = await repository.getLatestArtifact(original.encounterId, "claim");
+    if (!artifact) {
+      return res.status(400).json({ error: "No populated claim is on file for this encounter to correct." });
+    }
+
+    let correctedClaim;
+    try {
+      correctedClaim = buildCorrectedClaim(artifact.content, suggestedCodeChanges);
+    } catch (err) {
+      if (err instanceof CorrectedClaimError) return res.status(400).json({ error: err.message });
+      throw err;
+    }
+
+    let stediClaim;
+    try {
+      stediClaim = buildStediClaim(correctedClaim, {
+        claimFrequencyCode: "7",
+        originalReferenceNumber: original.payerClaimControlNumber,
+      });
+    } catch (err) {
+      if (err instanceof StediMappingError) return res.status(400).json({ error: err.message });
+      throw err;
+    }
+
+    const stediResponse = await submitToStedi(stediClaim, STEDI_API_KEY);
+
+    const correctedArtifact = await repository.createArtifact({
+      encounterId: original.encounterId,
+      stage: "claim",
+      content: correctedClaim,
+      createdBy: "system",
+    });
+    const correctedClaimRow = await repository.createClaim({
+      encounterId: original.encounterId,
+      artifactId: correctedArtifact.artifactId,
+      claimType: "corrected",
+      parentClaimId: original.claimId,
+      payerName: original.payerName,
+      memberId: original.memberId,
+    });
+    await repository.updateClaimStatus(correctedClaimRow.claimId, "submitted");
+
+    res.json({ claim: correctedClaimRow, stediClaim, stediResponse });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err instanceof StediSubmissionError) {
+      console.error("Stedi rejected the corrected claim:", JSON.stringify(err.details));
+      return res.status(502).json({ error: err.message, details: err.details });
+    }
+    console.error("Filing a corrected claim failed:", err);
+    res.status(502).json({ error: "Filing a corrected claim failed. See server logs for details." });
   }
 });
 
