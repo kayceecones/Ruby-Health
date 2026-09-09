@@ -931,6 +931,106 @@ app.post("/api/claims/:claimId/resubmit", async (req, res) => {
   }
 });
 
+// Step 8 of the denial loop: send the appeal, rather than leaving a drafted
+// letter with nowhere to go. An appeal that stands behind the original coding
+// reaches the payer as a frequency-7 claim referencing the original -- the
+// same wire format as a correction, and the same submission path the first
+// submission took.
+//
+// Two things the schema does not have and this endpoint works around rather
+// than migrating: there is no "appeal" claim type (CLAIM_TYPES is original |
+// corrected | secondary) and no "appeal" artifact stage, so the appeal is
+// chained as a corrected claim and the letter rides along on the claim
+// artifact. Both are Notion select options; widening them is a schema change,
+// not a code change.
+app.post("/api/claims/:claimId/appeal/submit", async (req, res) => {
+  if (!requireRepository(res)) return;
+
+  const { letterBody, needsReviewBeforeSending } = req.body || {};
+
+  if (typeof letterBody !== "string" || !letterBody.trim()) {
+    return res.status(400).json({ error: "Request body must include a non-empty 'letterBody'." });
+  }
+
+  // The draft flags quotes it could not find in the transcript. An appeal
+  // quoting a record that does not say what it claims discredits the whole
+  // letter, so the server refuses it rather than trusting the client to.
+  if (needsReviewBeforeSending) {
+    return res.status(400).json({
+      error:
+        "This draft has quotes that could not be found in the transcript. Fix or remove them before submitting the appeal.",
+    });
+  }
+
+  if (!STEDI_API_KEY) {
+    return res.status(500).json({
+      error: "STEDI_API_KEY is not configured on the server. Add it to backend/.env and restart.",
+    });
+  }
+
+  try {
+    const original = await repository.getClaim(req.params.claimId);
+    if (!original) return res.status(404).json({ error: `No claim found with claim_id '${req.params.claimId}'.` });
+
+    // Same guard as a corrected claim: without the payer's own control number
+    // the payer reads this as a brand-new claim and denies it as a duplicate.
+    if (!original.payerClaimControlNumber) {
+      return res.status(400).json({
+        error:
+          "This claim has no payer claim control number on file yet. Record the payer's remittance before submitting an appeal.",
+      });
+    }
+
+    const artifact = await repository.getLatestArtifact(original.encounterId, "claim");
+    if (!artifact) {
+      return res.status(400).json({ error: "No populated claim is on file for this encounter to appeal." });
+    }
+
+    let stediClaim;
+    try {
+      stediClaim = buildStediClaim(artifact.content, {
+        claimFrequencyCode: "7",
+        originalReferenceNumber: original.payerClaimControlNumber,
+      });
+    } catch (err) {
+      if (err instanceof StediMappingError) return res.status(400).json({ error: err.message });
+      throw err;
+    }
+
+    const stediResponse = await submitToStedi(stediClaim, STEDI_API_KEY);
+
+    // The letter is the human-facing record of why this went back. It rides
+    // on the claim artifact because there is no appeal stage to put it in.
+    const appealArtifact = await repository.createArtifact({
+      encounterId: original.encounterId,
+      stage: "claim",
+      content: { ...artifact.content, appealLetter: letterBody, appealOfClaimId: original.claimId },
+      createdBy: "system",
+    });
+    const appealClaimRow = await repository.createClaim({
+      encounterId: original.encounterId,
+      artifactId: appealArtifact.artifactId,
+      claimType: "corrected",
+      parentClaimId: original.claimId,
+      payerName: original.payerName,
+      memberId: original.memberId,
+    });
+    await repository.updateClaimStatus(appealClaimRow.claimId, "submitted");
+
+    res.json({ claim: appealClaimRow, stediClaim, stediResponse });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err instanceof StediSubmissionError) {
+      console.error("Stedi rejected the appeal:", JSON.stringify(err.details));
+      return res.status(502).json({ error: err.message, details: err.details });
+    }
+    console.error("Submitting the appeal failed:", err);
+    res.status(502).json({ error: "Submitting the appeal failed. See server logs for details." });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Ruby Health demo backend listening on http://localhost:${PORT}`);
   console.log(`Claim path model: ${MODEL} | transcript cleanup: ${UTILITY_MODEL}`);

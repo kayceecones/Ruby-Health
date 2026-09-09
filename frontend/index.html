@@ -130,6 +130,10 @@
       background: rgba(207, 66, 74, 0.1); border: 1px solid rgba(207, 66, 74, 0.35); border-radius: 8px;
       padding: 10px 12px; font-size: 12.5px; color: var(--garnet); margin: 10px 0;
     }
+    /* Submitting is irreversible; it gets its own space rather than sitting
+       flush against the letter you were reading. */
+    .appeal-submit { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border-soft); }
+    .appeal-submit .stedi-note { font-size: 12.5px; color: var(--ink-2); margin-bottom: 10px; }
     .appeal-quote { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; margin-bottom: 6px; line-height: 1.5; }
     .appeal-quote .verdict {
       flex: none; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
@@ -1974,6 +1978,67 @@
       return wrap;
     }
 
+    // The appeal had nowhere to go once drafted. This sends it through the
+    // same Stedi path the original submission used. Kept separate from the
+    // letter above it: submitting is irreversible and should not sit flush
+    // against something you were only reading.
+    function renderAppealSubmitAction(claim, draft, reload) {
+      const wrap = document.createElement("div");
+      wrap.className = "appeal-submit";
+
+      const note = document.createElement("div");
+      note.className = "stedi-note";
+      note.textContent = draft.needsReviewBeforeSending
+        ? "Fix the unsupported quotes above before this can be submitted."
+        : "Submits to Stedi's sandbox Test Payer as a correction referencing the original claim -- the same path the first submission took. Synthetic demo submission; it never reaches a real payer.";
+      wrap.appendChild(note);
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      // Loud only when appealing is the recommended action; a corrected claim
+      // has its own primary button and two shouting at once helps nobody.
+      btn.className = "btn " + (draft.recommendedAction === "appeal" ? "btn-primary" : "");
+      btn.textContent = "Submit appeal to payer";
+      btn.disabled = Boolean(draft.needsReviewBeforeSending);
+
+      const status = document.createElement("div");
+      status.className = "status";
+
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        status.textContent = "Submitting the appeal to Stedi's sandbox...";
+        status.className = "status";
+        try {
+          const res = await fetch(`/api/claims/${encodeURIComponent(claim.claimId)}/appeal/submit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              letterBody: draft.letterBody,
+              needsReviewBeforeSending: Boolean(draft.needsReviewBeforeSending),
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            status.textContent = data.error || "Could not submit the appeal.";
+            status.className = "status error";
+            btn.disabled = false;
+            return;
+          }
+          status.textContent = `Appeal submitted as ${data.claim.claimId}, chained to ${claim.claimId}.`;
+          status.className = "status";
+          reload();
+        } catch (err) {
+          status.textContent = "Something went wrong: " + err.message;
+          status.className = "status error";
+          btn.disabled = false;
+        }
+      });
+
+      wrap.appendChild(btn);
+      wrap.appendChild(status);
+      return wrap;
+    }
+
     function renderAppealDraft(draft, claim, reload) {
       const wrap = document.createElement("div");
 
@@ -2051,8 +2116,10 @@
 
         const note = document.createElement("div");
         note.className = "payer-deadline";
-        note.textContent = "A draft for a human to review and send -- Ruby does not submit appeals.";
+        note.textContent = "A draft for a human to review before it goes anywhere.";
         wrap.appendChild(note);
+
+        if (claim) wrap.appendChild(renderAppealSubmitAction(claim, draft, reload));
       }
 
       return wrap;
