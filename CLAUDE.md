@@ -195,6 +195,23 @@ fieldsets, filled through `renderFieldGroups()`. Adding a field or a group is
 an entry in that list — not another `appendChild` in the middle of a render
 function.
 
+### Links
+
+**One link treatment, and it is `.rh-link`.** Ruby paired with an underline —
+never colour alone, because colourblind users and low-contrast displays lose a
+colour-only affordance.
+
+It is reserved for **the name of an object you can open**: a patient, case,
+encounter or claim. Nothing else borrows it — not buttons, not a code, not a
+status. If a name carries the treatment it must navigate; if it navigates it
+must carry the treatment.
+
+- **Inline names** go through `objectLink(text, onClick)`. Don't hand-build one.
+- **Whole-row links** put `.rh-link` on the row's title span. The row button is
+  the click target — a `<button>` inside a `<button>` is invalid HTML.
+- **Payer and provider have no views**, so their names stay plain text until
+  those pages exist. Don't style them as links in the meantime.
+
 ### Color
 
 `--gold` is decorative only — dots, rules, borders. It fails WCAG AA as text.
