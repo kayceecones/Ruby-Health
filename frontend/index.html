@@ -62,7 +62,7 @@
     #historyView.route.active { display: block; }
     #historyView { flex: 1; min-width: 0; padding: 32px 44px; max-width: 900px; }
     .history-breadcrumb { font-size: 12.5px; color: var(--ink-2); margin-bottom: 16px; }
-    .history-breadcrumb a { cursor: pointer; text-decoration: none; }
+    .history-breadcrumb a { cursor: pointer; }
     .history-row-link { background: none; border: none; padding: 0; margin: 0; width: 100%; text-align: left; }
     .history-row-link:hover .activity-row { background: var(--surface); }
 
@@ -286,6 +286,25 @@
     .card-subtitle { font-size: 12.5px; color: var(--ink-2); margin-bottom: 14px; }
 
     .section-body { display: block; }
+
+    /* The one link treatment: ruby paired with an underline, never colour
+       alone -- colourblind users and low-contrast displays lose a colour-only
+       affordance. Reserved for names of objects you can open; nothing else
+       borrows it. On a whole-row link the row is the click target and this is
+       only the visual cue, so it is applied to a span, not a nested button. */
+    .rh-link {
+      color: var(--ruby);
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+      text-decoration-color: rgba(163, 31, 61, 0.45);
+      cursor: pointer;
+    }
+    button.rh-link { background: none; border: none; padding: 0; margin: 0; font: inherit; text-align: left; }
+    .rh-link:hover, .history-row-link:hover .rh-link { color: var(--cherry); text-decoration-color: currentColor; }
+    .rh-link:focus-visible, .history-row-link:focus-visible {
+      outline: 2px solid var(--ruby); outline-offset: 2px; border-radius: 3px;
+    }
 
     .empty-state { color: var(--ink-2); font-size: 13px; line-height: 1.6; }
 
@@ -888,7 +907,7 @@
       const main = document.createElement("div");
       main.className = "activity-main";
       const title = document.createElement("div");
-      title.className = "activity-title";
+      title.className = "activity-title rh-link";
       const sub = document.createElement("div");
       sub.className = "activity-sub";
       if (item.type === "encounter") {
@@ -1021,7 +1040,7 @@
       const main = document.createElement("div");
       main.className = "activity-main";
       const title = document.createElement("div");
-      title.className = "activity-title";
+      title.className = "activity-title rh-link";
       title.textContent = patient.name;
       const sub = document.createElement("div");
       sub.className = "activity-sub";
@@ -1069,15 +1088,15 @@
         return;
       }
       historyBreadcrumbEl.hidden = false;
-      const parts = ['<a data-nav="root">History</a>'];
+      const parts = ['<a class="rh-link" data-nav="root">History</a>'];
       if (historyState.view === "patient") {
         parts.push(" / <span>" + escapeHtml(historyState.patient.name) + "</span>");
       } else if (historyState.view === "case") {
-        parts.push(' / <a data-nav="patient">' + escapeHtml(historyState.patient.name) + "</a>");
+        parts.push(' / <a class="rh-link" data-nav="patient">' + escapeHtml(historyState.patient.name) + "</a>");
         parts.push(" / <span>" + escapeHtml(historyState.case.title || historyState.case.caseId) + "</span>");
       } else if (historyState.view === "encounter") {
-        parts.push(' / <a data-nav="patient">' + escapeHtml(historyState.patient.name) + "</a>");
-        parts.push(' / <a data-nav="case">' + escapeHtml(historyState.case.title || historyState.case.caseId) + "</a>");
+        parts.push(' / <a class="rh-link" data-nav="patient">' + escapeHtml(historyState.patient.name) + "</a>");
+        parts.push(' / <a class="rh-link" data-nav="case">' + escapeHtml(historyState.case.title || historyState.case.caseId) + "</a>");
         parts.push(" / <span>" + escapeHtml(historyState.encounter.encounterId) + "</span>");
       }
       historyBreadcrumbEl.innerHTML = parts.join("");
@@ -1113,6 +1132,18 @@
       for (const [key, el] of Object.entries(HISTORY_VIEWS)) el.hidden = key !== name;
     }
 
+    // The only way to make an inline link to another object. Anything naming a
+    // patient, case, encounter or claim goes through here so the treatment
+    // stays chosen in one place.
+    function objectLink(text, onClick) {
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = "rh-link";
+      el.textContent = text;
+      el.addEventListener("click", onClick);
+      return el;
+    }
+
     // sections is [{ name, title?, content? }] in the order they should appear.
     // Returns { <name>: element } so a slow fetch fills its own slot whenever
     // it lands, rather than appending after whatever finished first.
@@ -1126,7 +1157,11 @@
 
       const sub = document.createElement("div");
       sub.className = "page-subtitle";
-      sub.textContent = subtitle;
+      // A subtitle is a string, or a list of parts where a part is plain text
+      // or a { text, onClick } object link.
+      for (const part of Array.isArray(subtitle) ? subtitle : [subtitle]) {
+        sub.append(part && part.onClick ? objectLink(part.text, part.onClick) : String(part));
+      }
       container.appendChild(sub);
 
       const slots = {};
@@ -1224,7 +1259,7 @@
       const main = document.createElement("div");
       main.className = "activity-main";
       const title = document.createElement("div");
-      title.className = "activity-title";
+      title.className = "activity-title rh-link";
       title.textContent = c.title || c.caseId;
       const sub = document.createElement("div");
       sub.className = "activity-sub";
@@ -1279,7 +1314,7 @@
       const main = document.createElement("div");
       main.className = "activity-main";
       const title = document.createElement("div");
-      title.className = "activity-title";
+      title.className = "activity-title rh-link";
       title.textContent = e.encounterId;
       const sub = document.createElement("div");
       sub.className = "activity-sub";
@@ -1313,7 +1348,11 @@
         caseObj.status === "closed" && caseObj.closedAt ? `closed ${formatActivityDate(caseObj.closedAt)}` : caseObj.status;
       const slots = renderDetailView(historyCaseViewEl, {
         title: caseObj.title || caseObj.caseId,
-        subtitle: `${caseObj.caseId} · ${patient.name} · ${statusNote}`,
+        subtitle: [
+          `${caseObj.caseId} · `,
+          { text: patient.name, onClick: () => openHistoryPatient(patient) },
+          ` · ${statusNote}`,
+        ],
         sections: [{ name: "encounters", title: "Encounters" }],
       });
       fetchHistoryList(slots.encounters, `/api/cases/${encodeURIComponent(caseObj.caseId)}/encounters`, {
@@ -1585,9 +1624,12 @@
 
       const slots = renderDetailView(historyEncounterViewEl, {
         title: `Encounter ${encounter.encounterId}`,
-        subtitle:
-          `${caseObj.title || caseObj.caseId} · ${patient.name} · ${encounter.status} · ` +
-          (formatActivityDate(encounter.occurredAt) || "date unknown"),
+        subtitle: [
+          { text: caseObj.title || caseObj.caseId, onClick: () => openHistoryCase(patient, caseObj) },
+          " · ",
+          { text: patient.name, onClick: () => openHistoryPatient(patient) },
+          ` · ${encounter.status} · ` + (formatActivityDate(encounter.occurredAt) || "date unknown"),
+        ],
         sections: [
           // No title: the tab strip names this section itself.
           { name: "artifacts", content: artifacts.element },
