@@ -212,6 +212,28 @@ must carry the treatment.
 - **Payer and provider have no views**, so their names stay plain text until
   those pages exist. Don't style them as links in the meantime.
 
+### Routes
+
+Three places in the rail, and one shared record view:
+
+| Route | What it is |
+|---|---|
+| **New Claim** | the pipeline: transcript → facts → codes → claim |
+| **Patients** | everyone on file, then patient → case → encounter |
+| **History** | claims bucketed by what they are waiting on |
+| `record` | one patient, case or encounter — **not** a rail destination |
+
+Patients and History both open the record, so it is its own route rather than
+living inside either. `recordOrigin` is set before navigating and stamped onto
+`historyState`, which decides two things: the first breadcrumb crumb, and which
+rail item stays lit. Leaving the record clears that trail. If you add another
+way in, set `recordOrigin` first or the breadcrumb will claim the wrong path.
+
+History's buckets are `CLAIM_BUCKETS` — a list with a `match` on claim status.
+Add a bucket there, not by hand-building another tab strip. The one without a
+`match` is All history, which is the activity feed rather than a slice of the
+claims.
+
 ### Acting on a claim from History
 
 History reads the record; it does not edit it in place. The exception is

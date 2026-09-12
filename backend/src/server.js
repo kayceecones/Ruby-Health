@@ -587,6 +587,55 @@ app.get("/api/claims/:claimId/feedback", async (req, res) => {
 
 // The History encounter view needs a claim's status and denial state next to
 // the artifacts it was built from.
+// Build-order step 11: History stops being one undifferentiated feed and
+// becomes buckets a provider triages -- drafts to send, submissions in
+// flight, rejections to fix, denials to fight. That needs every claim in one
+// list with enough context to show a row and click through, which nothing
+// exposed before: claims were only ever reachable one encounter at a time.
+app.get("/api/claims", async (_req, res) => {
+  if (!requireRepository(res)) return;
+  try {
+    const claims = await repository.listAllClaims();
+
+    // Claims carry an encounter id and nothing else human-readable, so a row
+    // would otherwise say "CL-14" with no patient on it. Resolved here rather
+    // than by the client firing a request per row.
+    const [patients, encounters] = await Promise.all([
+      repository.listPatients(),
+      Promise.all(
+        [...new Set(claims.map((c) => c.encounterId))].map((id) => repository.getEncounter(id).catch(() => null))
+      ),
+    ]);
+    const patientsById = new Map(patients.map((p) => [p.patientId, p]));
+    const encountersById = new Map(encounters.filter(Boolean).map((e) => [e.encounterId, e]));
+
+    const caseLists = await Promise.all(patients.map((p) => repository.listCasesForPatient(p.patientId)));
+    const casesById = new Map(caseLists.flat().map((c) => [c.caseId, c]));
+
+    const enriched = claims.map((claim) => {
+      const encounter = encountersById.get(claim.encounterId) || null;
+      const patient = encounter ? patientsById.get(encounter.patientId) : null;
+      const caseObj = encounter ? casesById.get(encounter.caseId) : null;
+      return {
+        ...claim,
+        patientId: encounter?.patientId || null,
+        patientName: patient?.name || null,
+        caseId: encounter?.caseId || null,
+        caseTitle: caseObj?.title || encounter?.caseId || null,
+        occurredAt: encounter?.occurredAt || null,
+      };
+    });
+
+    res.json({ claims: enriched });
+  } catch (err) {
+    if (err instanceof NotionRepositoryError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("Listing claims failed:", err);
+    res.status(502).json({ error: "Listing claims failed. See server logs for details." });
+  }
+});
+
 app.get("/api/encounters/:encounterId/claims", async (req, res) => {
   if (!requireRepository(res)) return;
   try {
