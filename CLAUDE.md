@@ -152,7 +152,17 @@ Two rules that are easy to break by accident:
   `.card-title`s underneath it.
 
 Spacing above a section title is handled by the stylesheet
-(`.card + .section-title`), so no call site sets its own margin. JS finds
+(`.card + .section-title`), so no call site sets its own margin.
+
+**Be wary of adjacent-sibling selectors.** `a + b` breaks silently the moment
+anything wraps either element — no error, no visual warning, just spacing or a
+separator that quietly stops existing. Two have already done this here: the
+Facts card's field spacing, and the hairlines between rows in every History
+list, which vanished when rows were wrapped in a link to make them clickable
+and stayed missing for weeks. Prefer hanging the rule on the **container**
+(`.card-rows > * + *`), which does not care what its children turn out to be.
+If you must use a sibling selector, check the computed style in a browser
+rather than reading the rule and assuming it matches. JS finds
 content by `data-` hooks, not by style class, so restyling can't break behavior.
 
 ### Adding a section to a History view
@@ -195,6 +205,39 @@ fieldsets, filled through `renderFieldGroups()`. Adding a field or a group is
 an entry in that list — not another `appendChild` in the middle of a render
 function.
 
+### Definition of done, for a new view
+
+From the UI navigation conventions page. **New views only** — existing views
+are not being retrofitted; they are not costing anything.
+
+- [ ] Its URL fully restores it, including filters, sort and selection
+- [ ] Browser back and forward work from it
+- [ ] Every field naming another object links to that object, and is visibly a link
+- [ ] It uses an existing layout slot
+
+A PR without these is incomplete, not "phase one". **A follow-up PR to make the
+previous one usable means the first one wasn't done.**
+
+One honest gap: `pushState` currently passes no URL, so the address bar never
+changes and the first box cannot be ticked yet. Putting view state in the query
+string is its own open item; until it lands, a new view satisfies the other
+three and that one stays open rather than being quietly dropped.
+
+### Standing UI constraints
+
+- **Separate the irreversible.** Submit, sign and delete never sit adjacent to
+  routine controls. Proximity implies relatedness, and a misclick here sends a
+  wrong claim to a payer. `.submit-actions` is where these live.
+- **One loud action per screen** — the action the screen exists for. The
+  exception is a genuine fork: appeal and amend on a denied claim are equally
+  primary, and quieting either would push the provider toward the other.
+- **Density is fine; unpredictability isn't.** Every field stays in the same
+  place across every claim so reviewers glance instead of read. Group into
+  labelled sections, separate with type and space rather than boxes and
+  borders, and mark anomalous fields rather than hiding ordinary ones.
+- **Deviation needs a reason.** A different button size, new spacing, a one-off
+  colour — put the rationale in the PR description, or match the existing
+  pattern.
 ### "Context", not "transcript"
 
 The first stage is **Context** everywhere a provider reads it: what they bring
