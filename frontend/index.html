@@ -163,6 +163,20 @@
       border: 1px solid var(--border); background: var(--card); color: var(--ink);
     }
     .amend-row input { min-width: 110px; }
+    /* The whole context field is the drop target, so a dragged file does not
+       have to be aimed at a small button. */
+    .drop-active { outline: 2px dashed var(--ruby); outline-offset: 3px; border-radius: 10px; }
+
+    .record-locked {
+      font-size: 12.5px; color: var(--ink-2); background: var(--card);
+      border: 1px solid var(--border-soft); border-radius: 8px;
+      padding: 10px 12px; margin-bottom: 12px;
+    }
+    .ro-transcript-edit {
+      width: 100%; min-height: 160px; font: inherit; font-size: 13.5px; line-height: 1.65;
+      border: none; background: none; color: var(--ink); resize: none; padding: 0;
+    }
+    .ro-transcript-edit:focus { outline: none; }
     .appeal-quote { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; margin-bottom: 6px; line-height: 1.5; }
     .appeal-quote .verdict {
       flex: none; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
@@ -599,7 +613,7 @@
         <div id="claimNav" class="nav-group">
         <button class="nav-item" data-tab="transcript" type="button">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/><path d="M8 21h8"/></svg>
-          <span class="nav-label">Transcript</span>
+          <span class="nav-label">Context</span>
           <span class="nav-dot"></span>
         </button>
         <button class="nav-item" data-tab="facts" type="button">
@@ -665,7 +679,7 @@
       <div id="prepareClaimBar">
         <div id="prepareClaimText">
           <div id="prepareClaimTitle">Prepare claim</div>
-          <div id="prepareClaimSubtitle">Runs the transcript through extraction, coding, and claim population in one step.</div>
+          <div id="prepareClaimSubtitle">Runs the context through extraction, coding, and claim population in one step.</div>
         </div>
         <button id="prepareClaimBtn" type="button">Prepare claim →</button>
       </div>
@@ -680,8 +694,8 @@
       </div>
 
       <div id="panelTranscript" class="tabpanel">
-        <h1 class="page-title">Transcript</h1>
-        <div class="page-subtitle">Paste a transcript, or use the mic below. Nothing here navigates you anywhere automatically.</div>
+        <h1 class="page-title">Context</h1>
+        <div class="page-subtitle">The clinical context for this encounter -- record it, upload a text file, paste it, or type it. Nothing here navigates you anywhere automatically.</div>
 
         <div class="card" id="micControlCard">
           <div id="micStateRow">
@@ -702,7 +716,7 @@
             <div>
               <div id="micLabel">Push to talk</div>
               <div id="micHint">Tap to start talking. Tap again quickly to lock (hands-free); tap once more to stop.</div>
-              <div id="micUnsupported">Live mic capture isn't supported in this browser (try Chrome or Edge) — paste a transcript below instead.</div>
+              <div id="micUnsupported">Live mic capture isn't supported in this browser (try Chrome or Edge) — paste or type the context below instead.</div>
             </div>
           </div>
         </div>
@@ -710,13 +724,15 @@
         <div class="card">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
             <div style="display:flex; align-items:center;">
-              <span class="rh-heading" style="font-weight:700; font-size:14.5px;">Live transcript</span>
+              <span class="rh-heading" style="font-weight:700; font-size:14.5px;">Clinical context</span>
               <span id="transcriptListeningPill"><span class="dot"></span>Listening</span>
             </div>
             <div style="display:flex; gap:8px;">
-              <button id="cleanupBtn" class="btn" type="button">Clean up transcript</button>
+              <button id="uploadContextBtn" class="btn" type="button">Upload a file</button>
+              <button id="cleanupBtn" class="btn" type="button">Clean up wording</button>
               <button id="extractBtn" class="btn btn-primary" type="button">Extract clinical facts</button>
             </div>
+            <input id="uploadContextInput" type="file" accept=".txt,.md,.markdown,.csv,text/*" hidden />
           </div>
 
           <div id="transcriptSummaryBox" class="summary-callout" style="display:none;">
@@ -728,8 +744,9 @@
             <div id="transcriptSummaryText" class="summary-callout-text"></div>
           </div>
 
-          <textarea id="transcript" placeholder="Paste a sample encounter transcript here, or use the mic above..."></textarea>
+          <textarea id="transcript" placeholder="Paste or type the clinical context here, or use the mic above..."></textarea>
           <div id="micInterim"></div>
+          <div id="uploadContextStatus" class="status"></div>
           <div id="cleanupStatus" class="status"></div>
           <div id="extractStatus" class="status"></div>
         </div>
@@ -741,7 +758,7 @@
 
       <div id="panelFacts" class="tabpanel">
         <h1 class="page-title">Clinical facts</h1>
-        <div class="page-subtitle">Auto-filled by "Extract clinical facts" on the Transcript tab, or edit/add by hand — either way, this feeds the Codes and Claim tabs.</div>
+        <div class="page-subtitle">Auto-filled by "Extract clinical facts" on the Context tab, or edit/add by hand — either way, this feeds the Codes and Claim tabs.</div>
         <div class="card" id="factsCard"></div>
 
         <div class="step-nav">
@@ -1685,7 +1702,7 @@
       const wrap = document.createElement("div");
       const text = (content && content.transcript) || "";
       if (!text.trim()) {
-        wrap.appendChild(emptyState("No transcript recorded."));
+        wrap.appendChild(emptyState("No context recorded."));
         return wrap;
       }
       const pre = document.createElement("div");
@@ -1881,13 +1898,156 @@
       panel.appendChild(list);
     }
 
+    // ---- Editing a record in place ----------------------------------------
+    //
+    // The record used to be read-only everywhere, so correcting a typo in a
+    // transcript meant there was nowhere to do it. The four tabs now run the
+    // same editors the New Claim tabs do, pointed at this encounter's stored
+    // artifacts instead of the session state -- until the payer has seen the
+    // claim, after which the record is what was billed and stops being
+    // editable.
+    //
+    // Every edit writes a new artifact version rather than overwriting one, so
+    // the revision list keeps the whole trail and a submitted claim still
+    // points at the exact artifact it was built from.
+
+    // A claim that has left draft has gone to a payer. Editing the record
+    // behind it would leave the two telling different stories.
+    function encounterIsLocked(claims) {
+      return (claims || []).some((c) => c.status && c.status !== "draft");
+    }
+
+    // Artifact content is shaped differently per stage; the workspace holds the
+    // editable shape and this puts it back the way the stage stores it.
+    const STAGE_CONTENT = {
+      transcript: (ws) => ({ transcript: ws.transcript }),
+      facts: (ws) => ws.facts,
+      codes: (ws) => ws.codes,
+      claim: (ws) => ws.claim,
+    };
+
+    const EMPTY_FACTS = {
+      chiefComplaint: "",
+      symptoms: [],
+      diagnosesDiscussed: [],
+      proceduresPerformed: [],
+      medicalNecessityLanguage: [],
+    };
+
+    function makeRecordWorkspace(encounterId, latestByStage, { panels, setStatus }) {
+      let timers = {};
+      const ws = {
+        encounterId,
+        transcript: latestByStage.transcript?.transcript || "",
+        facts: { ...EMPTY_FACTS, ...(latestByStage.facts || {}) },
+        codes: Array.isArray(latestByStage.codes) ? latestByStage.codes : [],
+        claim: latestByStage.claim || null,
+
+        // Typing should not fire a write per keystroke, and a silent save on a
+        // medical record is worse than a slow one -- so it is debounced and it
+        // says what it is doing.
+        touched(stage) {
+          clearTimeout(timers[stage]);
+          setStatus(stage, "Saving...", false);
+          timers[stage] = setTimeout(() => ws.save(stage), 900);
+        },
+
+        async save(stage) {
+          try {
+            const res = await fetch(`/api/encounters/${encodeURIComponent(encounterId)}/artifacts`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ stage, content: STAGE_CONTENT[stage](ws), createdBy: "provider_edit" }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              setStatus(stage, data.error || "Couldn't save that edit.", true);
+              return;
+            }
+            setStatus(stage, `Saved as v${data.artifact?.version ?? "?"}.`, false);
+          } catch (err) {
+            console.error(`Saving the ${stage} edit failed:`, err);
+            setStatus(stage, "Couldn't save that edit. Is the server running?", true);
+          }
+        },
+
+        rerender(stage) {
+          const host = panels[stage]?.querySelector("[data-content-host]");
+          if (host) renderStageEditor(stage, host, ws);
+        },
+      };
+      return ws;
+    }
+
+    function renderStageEditor(stage, host, ws) {
+      if (stage === "transcript") {
+        host.innerHTML = "";
+
+        const textarea = document.createElement("textarea");
+        textarea.className = "ro-transcript-edit";
+        textarea.value = ws.transcript;
+        textarea.placeholder = "No context recorded.";
+        textarea.addEventListener("input", () => {
+          ws.transcript = textarea.value;
+          autoGrow(textarea);
+          ws.touched("transcript");
+        });
+
+        // The same four ways in as New Claim, minus the mic: a record is
+        // usually corrected by pasting or dropping in what was missed.
+        const bar = document.createElement("div");
+        bar.style.marginBottom = "10px";
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn";
+        button.textContent = "Upload a file";
+        const fileInput = document.createElement("input");
+        fileInput.type = "file";
+        fileInput.accept = ".txt,.md,.markdown,.csv,text/*";
+        fileInput.hidden = true;
+        const status = document.createElement("div");
+        status.className = "status";
+        bar.appendChild(button);
+        bar.appendChild(fileInput);
+
+        attachContextUpload({
+          button,
+          fileInput,
+          dropZone: textarea,
+          getExisting: () => ws.transcript,
+          apply: (text) => {
+            ws.transcript = text;
+            textarea.value = text;
+            autoGrow(textarea);
+            ws.touched("transcript");
+          },
+          setStatus: (text, isError) => {
+            status.textContent = text;
+            status.className = "status" + (isError ? " error" : "");
+          },
+        });
+
+        host.appendChild(bar);
+        host.appendChild(textarea);
+        host.appendChild(status);
+        requestAnimationFrame(() => autoGrow(textarea));
+        return;
+      }
+      if (stage === "facts") return renderFacts(host, ws);
+      if (stage === "codes") return renderCodes(host, ws);
+      return renderClaimForm(host, ws);
+    }
+
     function openHistoryEncounter(patient, caseObj, encounter) {
       historyState = { view: "encounter", patient, case: caseObj, encounter, origin: recordOrigin };
       pushHistoryState({ route: "record", view: "encounter", patient, case: caseObj, encounter, origin: recordOrigin });
       renderHistoryBreadcrumb();
       showHistoryView("encounter");
 
-      const artifacts = buildTabbedPanels(READ_TABS, { label: "encounter" });
+      const artifacts = buildTabbedPanels(
+        READ_TABS.map((t) => ({ name: t, label: t === "transcript" ? "Context" : t.charAt(0).toUpperCase() + t.slice(1) })),
+        { label: "encounter" }
+      );
       const panelEls = artifacts.panels;
 
       const slots = renderDetailView(historyEncounterViewEl, {
@@ -1907,9 +2067,19 @@
 
       loadEncounterClaims(slots.claims, encounter, caseObj);
 
-      fetch(`/api/encounters/${encodeURIComponent(encounter.encounterId)}/artifacts`)
-        .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
-        .then(({ ok, data }) => {
+      // Whether the record can still be edited is a fact about its claims, so
+      // both are fetched before either is drawn.
+      Promise.all([
+        fetch(`/api/encounters/${encodeURIComponent(encounter.encounterId)}/artifacts`).then((res) =>
+          res.json().then((data) => ({ ok: res.ok, data }))
+        ),
+        fetch(`/api/encounters/${encodeURIComponent(encounter.encounterId)}/claims`)
+          .then((res) => res.json().then((data) => (res.ok ? data.claims || [] : [])))
+          // A claims lookup that fails must not unlock a record it cannot
+          // vouch for, so treat it as submitted and leave the record read-only.
+          .catch(() => [{ status: "submitted" }]),
+      ])
+        .then(([{ ok, data }, claims]) => {
           if (!ok) {
             for (const t of READ_TABS) {
               panelEls[t].innerHTML = "";
@@ -1921,14 +2091,49 @@
           for (const artifact of data.history || []) {
             (versionsByStage[artifact.stage] = versionsByStage[artifact.stage] || []).push(artifact);
           }
+
+          const locked = encounterIsLocked(claims);
+          const statusEls = {};
+          const setStatus = (stage, text, isError) => {
+            const el = statusEls[stage];
+            if (!el) return;
+            el.textContent = text;
+            el.className = "status" + (isError ? " error" : "");
+          };
+          const latestByStage = {};
+          for (const tab of READ_TABS) latestByStage[tab] = versionsByStage[tab]?.[0]?.content;
+          const ws = locked
+            ? null
+            : makeRecordWorkspace(encounter.encounterId, latestByStage, { panels: panelEls, setStatus });
+
           for (const tab of READ_TABS) {
             const versions = versionsByStage[tab] || [];
             panelEls[tab].innerHTML = "";
+
+            if (locked) {
+              const note = document.createElement("div");
+              note.className = "record-locked";
+              note.textContent =
+                "This encounter has been billed, so its record is read-only -- it is what the payer was sent. Correct a filed claim from the claim below instead.";
+              panelEls[tab].appendChild(note);
+            }
+
             const contentHost = document.createElement("div");
             contentHost.className = "card";
             contentHost.dataset.contentHost = "";
-            contentHost.appendChild(READ_RENDERERS[tab](versions[0]?.content));
+            if (locked) contentHost.appendChild(READ_RENDERERS[tab](versions[0]?.content));
             panelEls[tab].appendChild(contentHost);
+            if (!locked) renderStageEditor(tab, contentHost, ws);
+
+            if (!locked) {
+              const status = document.createElement("div");
+              status.className = "status";
+              statusEls[tab] = status;
+              panelEls[tab].appendChild(status);
+            }
+
+            // Older versions are read-only whatever the record's state -- you
+            // are looking at what it was, not editing it.
             renderVersionDisclosure(panelEls[tab], versions, READ_RENDERERS[tab]);
           }
         })
@@ -2332,7 +2537,7 @@
         const head = document.createElement("div");
         head.className = "section-title";
         head.style.marginTop = "14px";
-        head.textContent = "Quotes, checked against the transcript";
+        head.textContent = "Quotes, checked against the context";
         wrap.appendChild(head);
 
         for (const q of draft.quoteGrounding) {
@@ -2396,7 +2601,7 @@
       btn.type = "button";
       btn.className = "btn btn-primary";
       btn.style.marginTop = "14px";
-      btn.textContent = "Draft an appeal from the transcript";
+      btn.textContent = "Draft an appeal from the context";
 
       const status = document.createElement("div");
       status.className = "status";
@@ -2834,9 +3039,9 @@
     const stediStatusEl = document.getElementById("stediStatus");
     const stediResultEl = document.getElementById("stediResult");
 
-    document.getElementById("toFactsBtn").addEventListener("click", () => showTab("facts"));
-    document.getElementById("toCodesBtn").addEventListener("click", () => showTab("codes"));
-    document.getElementById("toClaimBtn").addEventListener("click", () => showTab("claim"));
+    document.getElementById("toFactsBtn").addEventListener("click", () => goToTab("facts"));
+    document.getElementById("toCodesBtn").addEventListener("click", () => goToTab("codes"));
+    document.getElementById("toClaimBtn").addEventListener("click", () => goToTab("claim"));
 
     function showTab(tab) {
       currentTab = tab;
@@ -2867,7 +3072,69 @@
       saveState();
     }
 
-    navButtons.forEach((btn) => btn.addEventListener("click", () => showTab(btn.dataset.tab)));
+    // ---- Walking into a step runs it -------------------------------------
+    //
+    // "Continue to Facts" used to only move you to an empty Facts card, which
+    // you then had to fill by going back for the Extract button. Entering a
+    // step now runs the stage that fills it.
+    //
+    // Only when that step is empty. Re-running would overwrite whatever the
+    // provider edited by hand -- and spend another model call to do it -- so a
+    // step with something already in it is simply shown. The button on each
+    // tab is how you deliberately re-run one.
+    const STAGE_ON_ENTRY = {
+      facts: {
+        working: "Extracting clinical facts from the context...",
+        ready: () => state.transcript.trim().length > 0,
+        filled: hasFacts,
+        run: () => runExtract(),
+      },
+      codes: {
+        working: "Suggesting codes from the clinical facts...",
+        ready: hasFacts,
+        filled: () => state.codes.length > 0,
+        run: () => runSuggestCodes(),
+      },
+      claim: {
+        working: "Building the claim from the facts and codes...",
+        ready: () => hasFacts() && state.codes.length > 0,
+        filled: () => Boolean(state.claim),
+        run: () => runPopulateClaim(),
+      },
+    };
+
+    // Each runner reports into its own tab's status line, which is no longer
+    // the tab you are looking at once the step runs on the way in -- so the
+    // destination says what is happening rather than sitting there blank.
+    function stageNote(tab, text, isError) {
+      let note = panels[tab].querySelector("[data-stage-note]");
+      if (!note) {
+        note = document.createElement("div");
+        note.dataset.stageNote = "";
+        const subtitle = panels[tab].querySelector(".page-subtitle");
+        subtitle ? subtitle.after(note) : panels[tab].prepend(note);
+      }
+      note.className = "status" + (isError ? " error" : "");
+      note.textContent = text;
+      return note;
+    }
+
+    async function goToTab(tab) {
+      showTab(tab);
+      panels[tab].querySelector("[data-stage-note]")?.remove();
+
+      const stage = STAGE_ON_ENTRY[tab];
+      // Nothing to run, already run, or the step before it has not been done --
+      // in which case the tab's own empty state already says what is missing.
+      if (!stage || stage.filled() || !stage.ready()) return;
+
+      const note = stageNote(tab, stage.working, false);
+      const ok = await stage.run();
+      if (ok) note.remove();
+      else stageNote(tab, "That step didn't finish. The button on this tab will try again.", true);
+    }
+
+    navButtons.forEach((btn) => btn.addEventListener("click", () => goToTab(btn.dataset.tab)));
 
     // ---- Transcript tab ----
 
@@ -2893,10 +3160,132 @@
       renderNav();
     });
 
+    // ---- Uploading context ------------------------------------------------
+    //
+    // The fourth way in, alongside recording, pasting and typing. Plain text
+    // only, and it says so: a PDF or a Word file is a container, not text, and
+    // reading one as text would drop a page of binary into a clinical record
+    // rather than failing. Those want a parser and a place to keep the file,
+    // which is its own piece of work.
+
+    const CONTEXT_TEXT_EXTENSIONS = [".txt", ".md", ".markdown", ".csv", ".log"];
+    // Comfortably past any clinical note; small enough that a mis-picked file
+    // is caught before it is read rather than after.
+    const CONTEXT_MAX_BYTES = 2 * 1024 * 1024;
+
+    class ContextFileError extends Error {}
+
+    function readContextFile(file) {
+      const name = file.name || "that file";
+      const lower = name.toLowerCase();
+      const looksBinary = /\.(pdf|docx?|rtf|pages|odt|jpe?g|png|heic|zip)$/.test(lower);
+
+      if (looksBinary) {
+        throw new ContextFileError(
+          `Ruby can't read ${name.split(".").pop().toUpperCase()} files yet -- only plain text. ` +
+            "Copy the text out and paste it in, or save it as .txt."
+        );
+      }
+      if (!CONTEXT_TEXT_EXTENSIONS.some((ext) => lower.endsWith(ext)) && !(file.type || "").startsWith("text/")) {
+        throw new ContextFileError(`${name} doesn't look like a text file. Plain text only for now (.txt, .md, .csv).`);
+      }
+      if (file.size > CONTEXT_MAX_BYTES) {
+        throw new ContextFileError(`${name} is larger than 2 MB, which is far past a clinical note. Trim it or paste the relevant part.`);
+      }
+
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new ContextFileError(`Couldn't read ${name}.`));
+        reader.onload = () => {
+          const text = String(reader.result || "");
+          // A file can carry a text extension and still be binary. Dumping
+          // that into the record would be worse than refusing it.
+          if (/\u0000|\ufffd{3}/.test(text)) {
+            reject(new ContextFileError(`${name} doesn't appear to be readable text.`));
+            return;
+          }
+          if (!text.trim()) {
+            reject(new ContextFileError(`${name} is empty.`));
+            return;
+          }
+          resolve({ text: text.trim(), name });
+        };
+        reader.readAsText(file);
+      });
+    }
+
+    // One implementation, used by the New Claim context card and by the record
+    // view's context editor.
+    function attachContextUpload({ button, fileInput, dropZone, getExisting, apply, setStatus }) {
+      const take = async (file) => {
+        if (!file) return;
+        try {
+          const { text, name } = await readContextFile(file);
+          const existing = (getExisting() || "").trim();
+          // Never silently replace what is already there -- a dictated
+          // conversation is not something to lose to a stray drop.
+          apply(existing ? `${existing}\n\n${text}` : text);
+          setStatus(existing ? `Added ${name} below what was already here.` : `Loaded ${name}.`, false);
+        } catch (err) {
+          if (err instanceof ContextFileError) setStatus(err.message, true);
+          else {
+            console.error("Reading an uploaded context file failed:", err);
+            setStatus("Couldn't read that file.", true);
+          }
+        }
+      };
+
+      button?.addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", () => {
+        take(fileInput.files?.[0]);
+        // Reset, so picking the same file twice still fires a change.
+        fileInput.value = "";
+      });
+
+      if (dropZone) {
+        const stop = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        };
+        dropZone.addEventListener("dragover", (e) => {
+          stop(e);
+          dropZone.classList.add("drop-active");
+        });
+        dropZone.addEventListener("dragleave", (e) => {
+          stop(e);
+          dropZone.classList.remove("drop-active");
+        });
+        dropZone.addEventListener("drop", (e) => {
+          stop(e);
+          dropZone.classList.remove("drop-active");
+          take(e.dataTransfer?.files?.[0]);
+        });
+      }
+    }
+
+    const uploadContextStatusEl = document.getElementById("uploadContextStatus");
+    attachContextUpload({
+      button: document.getElementById("uploadContextBtn"),
+      fileInput: document.getElementById("uploadContextInput"),
+      dropZone: transcriptEl,
+      getExisting: () => transcriptEl.value,
+      apply: (text) => {
+        transcriptEl.value = text;
+        state.transcript = text;
+        autoGrow(transcriptEl);
+        saveState();
+        renderNav();
+      },
+      setStatus: (text, isError) => {
+        uploadContextStatusEl.textContent = text;
+        uploadContextStatusEl.className = "status" + (isError ? " error" : "");
+      },
+    });
+
     cleanupBtn.addEventListener("click", async () => {
       const transcript = state.transcript.trim();
       if (!transcript) {
-        cleanupStatusEl.textContent = "Paste or dictate a transcript first.";
+        cleanupStatusEl.textContent = "Add some context first -- record, paste or type it.";
         cleanupStatusEl.className = "status error";
         return;
       }
@@ -2938,7 +3327,7 @@
     async function runExtract() {
       const transcript = state.transcript.trim();
       if (!transcript) {
-        extractStatusEl.textContent = "Paste a transcript first.";
+        extractStatusEl.textContent = "Add some context first -- record, paste or type it.";
         extractStatusEl.className = "status error";
         return false;
       }
@@ -2962,7 +3351,7 @@
         }
 
         state.facts = data.facts;
-        renderFacts();
+        renderFacts(factsCardEl, claimWorkspace);
 
         // No patient/case picked yet -- the server auto-filed this encounter
         // under a shared "unidentified patient" case titled from the chief
@@ -3171,7 +3560,38 @@
 
     // ---- Facts tab: chips + quotes ----
 
-    function renderChipField(container, labelText, arr, variant) {
+    // ---- Workspaces ------------------------------------------------------
+    //
+    // A workspace is whatever the editors are pointed at: the live New Claim
+    // state, or one encounter's stored artifacts opened from the record. The
+    // editors take one explicitly rather than reaching for the global, so the
+    // same editor serves both -- and so a handler edits the workspace it was
+    // rendered against, not whichever one happens to be current when the click
+    // lands seconds later.
+    //
+    //   data     transcript / facts / codes / claim, edited in place
+    //   touched  called after any edit, to persist however this workspace does
+    //   rerender redraw one stage's editor
+
+    // The New Claim tabs edit the session state and save it to sessionStorage.
+    const claimWorkspace = {
+      get transcript() { return state.transcript; },
+      set transcript(v) { state.transcript = v; },
+      get facts() { return state.facts; },
+      get codes() { return state.codes; },
+      set codes(v) { state.codes = v; },
+      get claim() { return state.claim; },
+      set claim(v) { state.claim = v; },
+      get encounterId() { return state.encounterId; },
+      touched() { renderNav(); },
+      rerender(stage) {
+        if (stage === "facts") renderFacts(factsCardEl, claimWorkspace);
+        else if (stage === "codes") renderCodes(codesContainer, claimWorkspace);
+        else if (stage === "claim") renderClaimForm(claimFormEl, claimWorkspace);
+      },
+    };
+
+    function renderChipField(container, labelText, arr, variant, ws) {
       const field = document.createElement("div");
       field.className = "chip-field";
       const label = document.createElement("div");
@@ -3194,8 +3614,8 @@
         removeBtn.innerHTML = ICON_X;
         removeBtn.addEventListener("click", () => {
           arr.splice(i, 1);
-          renderFacts();
-          renderNav();
+          ws.rerender("facts");
+          ws.touched("facts");
         });
         chip.appendChild(removeBtn);
         list.appendChild(chip);
@@ -3211,12 +3631,12 @@
           const v = input.value.trim();
           if (v) {
             arr.push(v);
-            if (Array.isArray(state.facts?.medicalNecessityGrounding)) {
-              state.facts.medicalNecessityGrounding.push(null);
+            if (Array.isArray(ws.facts?.medicalNecessityGrounding)) {
+              ws.facts.medicalNecessityGrounding.push(null);
             }
             input.value = "";
-            renderFacts();
-            renderNav();
+            ws.rerender("facts");
+            ws.touched("facts");
           }
         }
       });
@@ -3226,7 +3646,7 @@
       container.appendChild(field);
     }
 
-    function renderNecessityField(container, arr) {
+    function renderNecessityField(container, arr, ws) {
       const field = document.createElement("div");
       field.className = "chip-field";
       const label = document.createElement("div");
@@ -3252,30 +3672,30 @@
           arr[i] = textarea.value;
           // The grounding result described the previous text; once the quote is
           // edited it no longer applies, and a stale badge would be a lie.
-          if (Array.isArray(state.facts?.medicalNecessityGrounding)) {
-            state.facts.medicalNecessityGrounding[i] = null;
+          if (Array.isArray(ws.facts?.medicalNecessityGrounding)) {
+            ws.facts.medicalNecessityGrounding[i] = null;
           }
           flag.className = "quote-flag unchecked";
           flag.textContent = "Edited \u00b7 not re-checked";
           autoGrow(textarea);
-          renderNav();
+          ws.touched("facts");
         });
         body.appendChild(textarea);
 
         const flag = document.createElement("span");
-        const grounding = state.facts?.medicalNecessityGrounding?.[i];
+        const grounding = ws.facts?.medicalNecessityGrounding?.[i];
         if (!grounding) {
           flag.className = "quote-flag unchecked";
           flag.textContent = "Not checked";
         } else if (grounding.status === "verified") {
           flag.className = "quote-flag verified";
-          flag.textContent = "\u2713 In transcript";
+          flag.textContent = "\u2713 In context";
         } else if (grounding.status === "paraphrased") {
           flag.className = "quote-flag paraphrased";
           flag.textContent = "Paraphrased \u00b7 not a quote";
         } else {
           flag.className = "quote-flag unsupported";
-          flag.textContent = "Not found in transcript";
+          flag.textContent = "Not found in context";
         }
         body.appendChild(flag);
 
@@ -3288,11 +3708,11 @@
         removeBtn.innerHTML = ICON_X;
         removeBtn.addEventListener("click", () => {
           arr.splice(i, 1);
-          if (Array.isArray(state.facts?.medicalNecessityGrounding)) {
-            state.facts.medicalNecessityGrounding.splice(i, 1);
+          if (Array.isArray(ws.facts?.medicalNecessityGrounding)) {
+            ws.facts.medicalNecessityGrounding.splice(i, 1);
           }
-          renderFacts();
-          renderNav();
+          ws.rerender("facts");
+          ws.touched("facts");
         });
         card.appendChild(removeBtn);
         list.appendChild(card);
@@ -3313,8 +3733,8 @@
           if (v) {
             arr.push(v);
             input.value = "";
-            renderFacts();
-            renderNav();
+            ws.rerender("facts");
+            ws.touched("facts");
           }
         }
       });
@@ -3335,7 +3755,7 @@
       { name: "medicalNecessityLanguage", label: "Medical necessity language", kind: "quotes" },
     ];
 
-    function renderChiefComplaintField(container, field, facts) {
+    function renderChiefComplaintField(container, field, facts, ws) {
       const wrap = document.createElement("div");
       wrap.className = "chip-field";
       const label = document.createElement("div");
@@ -3352,16 +3772,16 @@
       input.placeholder = field.placeholder;
       input.addEventListener("input", () => {
         facts[field.name] = input.value;
-        renderNav();
+        ws.touched("facts");
       });
       row.appendChild(input);
       wrap.appendChild(row);
       container.appendChild(wrap);
     }
 
-    function renderFacts() {
-      factsCardEl.innerHTML = "";
-      const f = state.facts;
+    function renderFacts(container, ws) {
+      container.innerHTML = "";
+      const f = ws.facts;
       for (const field of FACT_FIELDS) {
         if (field.kind !== "text" && !Array.isArray(f[field.name])) f[field.name] = [];
       }
@@ -3370,19 +3790,19 @@
         const slot = document.createElement("div");
         slot.className = "section-body";
         slot.dataset.slot = field.name;
-        factsCardEl.appendChild(slot);
+        container.appendChild(slot);
 
-        if (field.kind === "text") renderChiefComplaintField(slot, field, f);
-        else if (field.kind === "chips") renderChipField(slot, field.label, f[field.name], field.variant);
-        else renderNecessityField(slot, f[field.name]);
+        if (field.kind === "text") renderChiefComplaintField(slot, field, f, ws);
+        else if (field.kind === "chips") renderChipField(slot, field.label, f[field.name], field.variant, ws);
+        else renderNecessityField(slot, f[field.name], ws);
       }
     }
 
     // ---- Codes tab: insight cards ----
 
-    function renderCodes() {
-      codesContainer.innerHTML = "";
-      state.codes.forEach((row, i) => {
+    function renderCodes(container, ws) {
+      container.innerHTML = "";
+      ws.codes.forEach((row, i) => {
         if (!row.confidence) row.confidence = "";
         const card = document.createElement("div");
         card.className = "code-card";
@@ -3407,7 +3827,7 @@
         typeSelect.addEventListener("change", () => {
           row.codeType = typeSelect.value;
           badgeWrap.className = "code-badge-select " + (row.codeType === "CPT" ? "cpt" : "icd10");
-          renderNav();
+          ws.touched("codes");
         });
         badgeWrap.appendChild(typeSelect);
         const dot = document.createTextNode(" · ");
@@ -3419,7 +3839,7 @@
         codeInput.placeholder = "code";
         codeInput.addEventListener("input", () => {
           row.code = codeInput.value;
-          renderNav();
+          ws.touched("codes");
         });
         badgeWrap.appendChild(codeInput);
         main.appendChild(badgeWrap);
@@ -3458,8 +3878,8 @@
         });
         confSelect.addEventListener("change", () => {
           row.confidence = confSelect.value;
-          renderCodes();
-          renderNav();
+          ws.rerender("codes");
+          ws.touched("codes");
         });
         actions.appendChild(confSelect);
 
@@ -3468,9 +3888,9 @@
         removeBtn.className = "icon-btn";
         removeBtn.innerHTML = ICON_X;
         removeBtn.addEventListener("click", () => {
-          state.codes.splice(i, 1);
-          renderCodes();
-          renderNav();
+          ws.codes.splice(i, 1);
+          ws.rerender("codes");
+          ws.touched("codes");
         });
         actions.appendChild(removeBtn);
 
@@ -3504,13 +3924,13 @@
         rationaleInput.addEventListener("input", () => {
           row.rationale = rationaleInput.value;
           autoGrow(rationaleInput);
-          renderNav();
+          ws.touched("codes");
         });
         rationaleRow.appendChild(rationaleInput);
         card.appendChild(rationaleRow);
         requestAnimationFrame(() => autoGrow(rationaleInput));
 
-        codesContainer.appendChild(card);
+        container.appendChild(card);
       });
 
       const addBtn = document.createElement("button");
@@ -3518,16 +3938,16 @@
       addBtn.className = "btn add-row";
       addBtn.textContent = "Add code";
       addBtn.addEventListener("click", () => {
-        state.codes.push({ code: "", codeType: "ICD-10", description: "", confidence: "", rationale: "" });
-        renderCodes();
-        renderNav();
+        ws.codes.push({ code: "", codeType: "ICD-10", description: "", confidence: "", rationale: "" });
+        ws.rerender("codes");
+        ws.touched("codes");
       });
-      codesContainer.appendChild(addBtn);
+      container.appendChild(addBtn);
     }
 
     async function runSuggestCodes() {
       if (!hasFacts()) {
-        codesStatusEl.textContent = "Add some clinical facts first (on the Facts tab), or extract them from a transcript.";
+        codesStatusEl.textContent = "Add some clinical facts first (on the Facts tab), or extract them from the context.";
         codesStatusEl.className = "status error";
         return false;
       }
@@ -3551,7 +3971,7 @@
         }
 
         state.codes = Array.isArray(data.suggestions) ? data.suggestions : [];
-        renderCodes();
+        renderCodes(codesContainer, claimWorkspace);
         codesStatusEl.textContent = state.codes.length ? "Done." : "No confident code suggestions — add some by hand below if you like.";
         codesStatusEl.className = "status";
         renderNav();
@@ -3570,7 +3990,7 @@
 
     // ---- Claim tab ----
 
-    function renderEditableTable(container, headers, rows, fields, onAdd, addLabel) {
+    function renderEditableTable(container, headers, rows, fields, onAdd, addLabel, ws) {
       container.innerHTML = "";
       const table = document.createElement("table");
       table.className = "rh-table";
@@ -3596,7 +4016,7 @@
           input.value = row[field] ?? "";
           input.addEventListener("input", (e) => {
             row[field] = field === "units" ? Number(e.target.value) || 0 : e.target.value;
-            renderNav();
+            ws.touched("claim");
           });
           td.appendChild(input);
           tr.appendChild(td);
@@ -3609,7 +4029,7 @@
         removeBtn.addEventListener("click", () => {
           rows.splice(i, 1);
           renderEditableTable(container, headers, rows, fields, onAdd, addLabel);
-          renderNav();
+          ws.touched("claim");
         });
         actionTd.appendChild(removeBtn);
         tr.appendChild(actionTd);
@@ -3625,7 +4045,7 @@
       addBtn.addEventListener("click", () => {
         onAdd();
         renderEditableTable(container, headers, rows, fields, onAdd, addLabel);
-        renderNav();
+        ws.touched("claim");
       });
       container.appendChild(addBtn);
     }
@@ -3659,7 +4079,7 @@
         state.claim = data.claim;
         state.reviewed = false;
         state.stediSubmission = null;
-        renderClaimForm();
+        renderClaimForm(claimFormEl, claimWorkspace);
         applyReviewUiState();
         renderNav();
         return true;
@@ -3680,7 +4100,7 @@
     async function runPrepareClaim() {
       const transcript = state.transcript.trim();
       if (!transcript) {
-        prepareClaimStatusEl.textContent = "Paste or dictate a transcript first.";
+        prepareClaimStatusEl.textContent = "Add some context first -- record, paste or type it.";
         prepareClaimStatusEl.className = "status error";
         return;
       }
@@ -3865,7 +4285,7 @@
 
     submitStediBtn.addEventListener("click", () => runSubmitToStedi());
 
-    function claimLabeledInput(labelText, value, onChange, multiline) {
+    function claimLabeledInput(labelText, value, onChange, multiline, ws) {
       const label = document.createElement("label");
       label.textContent = labelText;
       const input = document.createElement(multiline ? "textarea" : "input");
@@ -3874,7 +4294,7 @@
       input.value = value || "";
       input.addEventListener("input", (e) => {
         onChange(e.target.value);
-        renderNav();
+        ws.touched("claim");
       });
       label.appendChild(input);
       return label;
@@ -3919,27 +4339,36 @@
       { name: "serviceLines", legend: "Service lines (CPT)" },
     ];
 
-    function claimFieldGrid(slot, fields, { singleColumn = false } = {}) {
+    function claimFieldGrid(slot, fields, ws, { singleColumn = false } = {}) {
       const grid = document.createElement("div");
       grid.className = "field-grid";
       if (singleColumn) grid.style.gridTemplateColumns = "1fr";
       for (const [label, value, onChange, multiline] of fields) {
-        grid.appendChild(claimLabeledInput(label, value, onChange, multiline));
+        grid.appendChild(claimLabeledInput(label, value, onChange, multiline, ws));
       }
       slot.appendChild(grid);
     }
 
-    function renderClaimForm() {
-      claimFormEl.innerHTML = "";
-      if (!state.claim) {
+    function renderClaimForm(container, ws) {
+      container.innerHTML = "";
+      if (!ws.claim) {
         const hint = document.createElement("p");
         hint.className = "status";
         hint.textContent = "No claim draft yet — click \"Populate claim\" above.";
-        claimFormEl.appendChild(hint);
+        container.appendChild(hint);
         return;
       }
-      const c = state.claim;
-      const slots = renderFieldGroups(claimFormEl, CLAIM_GROUPS);
+      const c = ws.claim;
+      // populateClaim always emits these blocks, but a stored artifact edited
+      // by hand or written by an older build may not -- and the editor writes
+      // through to them, so they have to exist to hold an edit. Reading one
+      // that was missing used to take the whole panel down.
+      c.patient = c.patient || {};
+      c.provider = c.provider || {};
+      c.payer = c.payer || {};
+      c.diagnoses = Array.isArray(c.diagnoses) ? c.diagnoses : [];
+      c.serviceLines = Array.isArray(c.serviceLines) ? c.serviceLines : [];
+      const slots = renderFieldGroups(container, CLAIM_GROUPS);
 
       if (Array.isArray(c.warnings) && c.warnings.length > 0) {
         const warnBox = document.createElement("div");
@@ -3964,19 +4393,19 @@
         ["Date of birth", c.patient.dob, (v) => (c.patient.dob = v)],
         ["Sex", c.patient.sex, (v) => (c.patient.sex = v)],
         ["Member ID", c.patient.memberId, (v) => (c.patient.memberId = v)],
-      ]);
+      ], ws);
 
       claimFieldGrid(slots.provider, [
         ["Name", c.provider.name, (v) => (c.provider.name = v)],
         ["NPI", c.provider.npi, (v) => (c.provider.npi = v)],
         ["Address", c.provider.address, (v) => (c.provider.address = v)],
         ["Date of service", c.dateOfService, (v) => (c.dateOfService = v)],
-      ]);
+      ], ws);
 
       claimFieldGrid(slots.payer, [
         ["Name", c.payer.name, (v) => (c.payer.name = v)],
         ["Payer ID", c.payer.payerId, (v) => (c.payer.payerId = v)],
-      ]);
+      ], ws);
 
       claimFieldGrid(
         slots.clinical,
@@ -3984,6 +4413,7 @@
           ["Chief complaint", c.chiefComplaint, (v) => (c.chiefComplaint = v)],
           ["Medical necessity notes", c.medicalNecessityNotes, (v) => (c.medicalNecessityNotes = v), true],
         ],
+        ws,
         { singleColumn: true }
       );
 
@@ -3993,7 +4423,8 @@
         c.diagnoses,
         ["pointer", "code", "description"],
         () => c.diagnoses.push({ pointer: "", code: "", description: "" }),
-        "Add diagnosis"
+        "Add diagnosis",
+        ws
       );
 
       renderEditableTable(
@@ -4002,7 +4433,8 @@
         c.serviceLines,
         ["code", "description", "diagnosisPointers", "units"],
         () => c.serviceLines.push({ code: "", description: "", diagnosisPointers: "", units: 1 }),
-        "Add service line"
+        "Add service line",
+        ws
       );
     }
 
@@ -4099,9 +4531,9 @@
       }
 
       renderTranscriptSummary();
-      renderFacts();
-      renderCodes();
-      renderClaimForm();
+      renderFacts(factsCardEl, claimWorkspace);
+      renderCodes(codesContainer, claimWorkspace);
+      renderClaimForm(claimFormEl, claimWorkspace);
       applyReviewUiState();
       updatePatientCaseBar();
       showTab("transcript");
@@ -4375,9 +4807,9 @@
     loadSavedState();
     transcriptEl.value = state.transcript;
     renderTranscriptSummary();
-    renderFacts();
-    renderCodes();
-    renderClaimForm();
+    renderFacts(factsCardEl, claimWorkspace);
+    renderCodes(codesContainer, claimWorkspace);
+    renderClaimForm(claimFormEl, claimWorkspace);
     applyReviewUiState();
     initIntake();
     showTab("transcript");

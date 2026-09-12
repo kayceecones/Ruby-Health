@@ -437,13 +437,20 @@ app.post("/api/encounters", async (req, res) => {
 // extracted stayed orphaned under the auto-provisioned "unidentified
 // patient" encounter instead of following the provider's correction.
 const ENCOUNTER_ARTIFACT_STAGES = ["transcript", "facts", "codes", "claim"];
+// Who a revision came from. A provider correcting the record in History is not
+// the same as Ruby writing it, and the revision list says so -- but only if the
+// caller can tell us apart.
+const ARTIFACT_AUTHORS = ["system", "provider_edit"];
 
 app.post("/api/encounters/:encounterId/artifacts", async (req, res) => {
   if (!requireRepository(res)) return;
-  const { stage, content } = req.body || {};
+  const { stage, content, createdBy = "system" } = req.body || {};
 
   if (!ENCOUNTER_ARTIFACT_STAGES.includes(stage)) {
     return res.status(400).json({ error: `Request body must include a 'stage' one of: ${ENCOUNTER_ARTIFACT_STAGES.join(", ")}.` });
+  }
+  if (!ARTIFACT_AUTHORS.includes(createdBy)) {
+    return res.status(400).json({ error: `'createdBy' must be one of: ${ARTIFACT_AUTHORS.join(", ")}.` });
   }
 
   try {
@@ -451,7 +458,7 @@ app.post("/api/encounters/:encounterId/artifacts", async (req, res) => {
       encounterId: req.params.encounterId,
       stage,
       content,
-      createdBy: "system",
+      createdBy,
     });
     res.json({ artifact });
   } catch (err) {
@@ -550,7 +557,7 @@ app.post("/api/claims/:claimId/appeal", async (req, res) => {
     const transcript = transcriptArtifact?.content?.transcript || "";
     if (!transcript.trim()) {
       return res.status(400).json({
-        error: "This encounter has no transcript on file, so there is nothing to ground an appeal in.",
+        error: "This encounter has no clinical context on file, so there is nothing to ground an appeal in.",
       });
     }
 
