@@ -164,6 +164,16 @@
       border: 1px solid var(--border); background: var(--card); color: var(--ink);
     }
     .amend-row input { min-width: 110px; }
+    .record-locked {
+      font-size: 12.5px; color: var(--ink-2); background: var(--card);
+      border: 1px solid var(--border-soft); border-radius: 8px;
+      padding: 10px 12px; margin-bottom: 12px;
+    }
+    .ro-transcript-edit {
+      width: 100%; min-height: 160px; font: inherit; font-size: 13.5px; line-height: 1.65;
+      border: none; background: none; color: var(--ink); resize: none; padding: 0;
+    }
+    .ro-transcript-edit:focus { outline: none; }
     .appeal-quote { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; margin-bottom: 6px; line-height: 1.5; }
     .appeal-quote .verdict {
       flex: none; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
@@ -1876,6 +1886,108 @@
       panel.appendChild(list);
     }
 
+    // ---- Editing a record in place ----------------------------------------
+    //
+    // The record used to be read-only everywhere, so correcting a typo in a
+    // transcript meant there was nowhere to do it. The four tabs now run the
+    // same editors the New Claim tabs do, pointed at this encounter's stored
+    // artifacts instead of the session state -- until the payer has seen the
+    // claim, after which the record is what was billed and stops being
+    // editable.
+    //
+    // Every edit writes a new artifact version rather than overwriting one, so
+    // the revision list keeps the whole trail and a submitted claim still
+    // points at the exact artifact it was built from.
+
+    // A claim that has left draft has gone to a payer. Editing the record
+    // behind it would leave the two telling different stories.
+    function encounterIsLocked(claims) {
+      return (claims || []).some((c) => c.status && c.status !== "draft");
+    }
+
+    // Artifact content is shaped differently per stage; the workspace holds the
+    // editable shape and this puts it back the way the stage stores it.
+    const STAGE_CONTENT = {
+      transcript: (ws) => ({ transcript: ws.transcript }),
+      facts: (ws) => ws.facts,
+      codes: (ws) => ws.codes,
+      claim: (ws) => ws.claim,
+    };
+
+    const EMPTY_FACTS = {
+      chiefComplaint: "",
+      symptoms: [],
+      diagnosesDiscussed: [],
+      proceduresPerformed: [],
+      medicalNecessityLanguage: [],
+    };
+
+    function makeRecordWorkspace(encounterId, latestByStage, { panels, setStatus }) {
+      let timers = {};
+      const ws = {
+        encounterId,
+        transcript: latestByStage.transcript?.transcript || "",
+        facts: { ...EMPTY_FACTS, ...(latestByStage.facts || {}) },
+        codes: Array.isArray(latestByStage.codes) ? latestByStage.codes : [],
+        claim: latestByStage.claim || null,
+
+        // Typing should not fire a write per keystroke, and a silent save on a
+        // medical record is worse than a slow one -- so it is debounced and it
+        // says what it is doing.
+        touched(stage) {
+          clearTimeout(timers[stage]);
+          setStatus(stage, "Saving...", false);
+          timers[stage] = setTimeout(() => ws.save(stage), 900);
+        },
+
+        async save(stage) {
+          try {
+            const res = await fetch(`/api/encounters/${encodeURIComponent(encounterId)}/artifacts`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ stage, content: STAGE_CONTENT[stage](ws), createdBy: "provider_edit" }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              setStatus(stage, data.error || "Couldn't save that edit.", true);
+              return;
+            }
+            setStatus(stage, `Saved as v${data.artifact?.version ?? "?"}.`, false);
+          } catch (err) {
+            console.error(`Saving the ${stage} edit failed:`, err);
+            setStatus(stage, "Couldn't save that edit. Is the server running?", true);
+          }
+        },
+
+        rerender(stage) {
+          const host = panels[stage]?.querySelector("[data-content-host]");
+          if (host) renderStageEditor(stage, host, ws);
+        },
+      };
+      return ws;
+    }
+
+    function renderStageEditor(stage, host, ws) {
+      if (stage === "transcript") {
+        host.innerHTML = "";
+        const textarea = document.createElement("textarea");
+        textarea.className = "ro-transcript-edit";
+        textarea.value = ws.transcript;
+        textarea.placeholder = "No transcript recorded.";
+        textarea.addEventListener("input", () => {
+          ws.transcript = textarea.value;
+          autoGrow(textarea);
+          ws.touched("transcript");
+        });
+        host.appendChild(textarea);
+        requestAnimationFrame(() => autoGrow(textarea));
+        return;
+      }
+      if (stage === "facts") return renderFacts(host, ws);
+      if (stage === "codes") return renderCodes(host, ws);
+      return renderClaimForm(host, ws);
+    }
+
     function openHistoryEncounter(patient, caseObj, encounter) {
       historyState = { view: "encounter", patient, case: caseObj, encounter, origin: recordOrigin };
       pushHistoryState({ route: "record", view: "encounter", patient, case: caseObj, encounter, origin: recordOrigin });
@@ -1902,9 +2014,19 @@
 
       loadEncounterClaims(slots.claims, encounter, caseObj);
 
-      fetch(`/api/encounters/${encodeURIComponent(encounter.encounterId)}/artifacts`)
-        .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
-        .then(({ ok, data }) => {
+      // Whether the record can still be edited is a fact about its claims, so
+      // both are fetched before either is drawn.
+      Promise.all([
+        fetch(`/api/encounters/${encodeURIComponent(encounter.encounterId)}/artifacts`).then((res) =>
+          res.json().then((data) => ({ ok: res.ok, data }))
+        ),
+        fetch(`/api/encounters/${encodeURIComponent(encounter.encounterId)}/claims`)
+          .then((res) => res.json().then((data) => (res.ok ? data.claims || [] : [])))
+          // A claims lookup that fails must not unlock a record it cannot
+          // vouch for, so treat it as submitted and leave the record read-only.
+          .catch(() => [{ status: "submitted" }]),
+      ])
+        .then(([{ ok, data }, claims]) => {
           if (!ok) {
             for (const t of READ_TABS) {
               panelEls[t].innerHTML = "";
@@ -1916,14 +2038,49 @@
           for (const artifact of data.history || []) {
             (versionsByStage[artifact.stage] = versionsByStage[artifact.stage] || []).push(artifact);
           }
+
+          const locked = encounterIsLocked(claims);
+          const statusEls = {};
+          const setStatus = (stage, text, isError) => {
+            const el = statusEls[stage];
+            if (!el) return;
+            el.textContent = text;
+            el.className = "status" + (isError ? " error" : "");
+          };
+          const latestByStage = {};
+          for (const tab of READ_TABS) latestByStage[tab] = versionsByStage[tab]?.[0]?.content;
+          const ws = locked
+            ? null
+            : makeRecordWorkspace(encounter.encounterId, latestByStage, { panels: panelEls, setStatus });
+
           for (const tab of READ_TABS) {
             const versions = versionsByStage[tab] || [];
             panelEls[tab].innerHTML = "";
+
+            if (locked) {
+              const note = document.createElement("div");
+              note.className = "record-locked";
+              note.textContent =
+                "This encounter has been billed, so its record is read-only -- it is what the payer was sent. Correct a filed claim from the claim below instead.";
+              panelEls[tab].appendChild(note);
+            }
+
             const contentHost = document.createElement("div");
             contentHost.className = "card";
             contentHost.dataset.contentHost = "";
-            contentHost.appendChild(READ_RENDERERS[tab](versions[0]?.content));
+            if (locked) contentHost.appendChild(READ_RENDERERS[tab](versions[0]?.content));
             panelEls[tab].appendChild(contentHost);
+            if (!locked) renderStageEditor(tab, contentHost, ws);
+
+            if (!locked) {
+              const status = document.createElement("div");
+              status.className = "status";
+              statusEls[tab] = status;
+              panelEls[tab].appendChild(status);
+            }
+
+            // Older versions are read-only whatever the record's state -- you
+            // are looking at what it was, not editing it.
             renderVersionDisclosure(panelEls[tab], versions, READ_RENDERERS[tab]);
           }
         })
@@ -2957,7 +3114,7 @@
         }
 
         state.facts = data.facts;
-        renderFacts();
+        renderFacts(factsCardEl, claimWorkspace);
 
         // No patient/case picked yet -- the server auto-filed this encounter
         // under a shared "unidentified patient" case titled from the chief
@@ -3166,7 +3323,38 @@
 
     // ---- Facts tab: chips + quotes ----
 
-    function renderChipField(container, labelText, arr, variant) {
+    // ---- Workspaces ------------------------------------------------------
+    //
+    // A workspace is whatever the editors are pointed at: the live New Claim
+    // state, or one encounter's stored artifacts opened from the record. The
+    // editors take one explicitly rather than reaching for the global, so the
+    // same editor serves both -- and so a handler edits the workspace it was
+    // rendered against, not whichever one happens to be current when the click
+    // lands seconds later.
+    //
+    //   data     transcript / facts / codes / claim, edited in place
+    //   touched  called after any edit, to persist however this workspace does
+    //   rerender redraw one stage's editor
+
+    // The New Claim tabs edit the session state and save it to sessionStorage.
+    const claimWorkspace = {
+      get transcript() { return state.transcript; },
+      set transcript(v) { state.transcript = v; },
+      get facts() { return state.facts; },
+      get codes() { return state.codes; },
+      set codes(v) { state.codes = v; },
+      get claim() { return state.claim; },
+      set claim(v) { state.claim = v; },
+      get encounterId() { return state.encounterId; },
+      touched() { renderNav(); },
+      rerender(stage) {
+        if (stage === "facts") renderFacts(factsCardEl, claimWorkspace);
+        else if (stage === "codes") renderCodes(codesContainer, claimWorkspace);
+        else if (stage === "claim") renderClaimForm(claimFormEl, claimWorkspace);
+      },
+    };
+
+    function renderChipField(container, labelText, arr, variant, ws) {
       const field = document.createElement("div");
       field.className = "chip-field";
       const label = document.createElement("div");
@@ -3189,8 +3377,8 @@
         removeBtn.innerHTML = ICON_X;
         removeBtn.addEventListener("click", () => {
           arr.splice(i, 1);
-          renderFacts();
-          renderNav();
+          ws.rerender("facts");
+          ws.touched("facts");
         });
         chip.appendChild(removeBtn);
         list.appendChild(chip);
@@ -3206,12 +3394,12 @@
           const v = input.value.trim();
           if (v) {
             arr.push(v);
-            if (Array.isArray(state.facts?.medicalNecessityGrounding)) {
-              state.facts.medicalNecessityGrounding.push(null);
+            if (Array.isArray(ws.facts?.medicalNecessityGrounding)) {
+              ws.facts.medicalNecessityGrounding.push(null);
             }
             input.value = "";
-            renderFacts();
-            renderNav();
+            ws.rerender("facts");
+            ws.touched("facts");
           }
         }
       });
@@ -3221,7 +3409,7 @@
       container.appendChild(field);
     }
 
-    function renderNecessityField(container, arr) {
+    function renderNecessityField(container, arr, ws) {
       const field = document.createElement("div");
       field.className = "chip-field";
       const label = document.createElement("div");
@@ -3247,18 +3435,18 @@
           arr[i] = textarea.value;
           // The grounding result described the previous text; once the quote is
           // edited it no longer applies, and a stale badge would be a lie.
-          if (Array.isArray(state.facts?.medicalNecessityGrounding)) {
-            state.facts.medicalNecessityGrounding[i] = null;
+          if (Array.isArray(ws.facts?.medicalNecessityGrounding)) {
+            ws.facts.medicalNecessityGrounding[i] = null;
           }
           flag.className = "quote-flag unchecked";
           flag.textContent = "Edited \u00b7 not re-checked";
           autoGrow(textarea);
-          renderNav();
+          ws.touched("facts");
         });
         body.appendChild(textarea);
 
         const flag = document.createElement("span");
-        const grounding = state.facts?.medicalNecessityGrounding?.[i];
+        const grounding = ws.facts?.medicalNecessityGrounding?.[i];
         if (!grounding) {
           flag.className = "quote-flag unchecked";
           flag.textContent = "Not checked";
@@ -3283,11 +3471,11 @@
         removeBtn.innerHTML = ICON_X;
         removeBtn.addEventListener("click", () => {
           arr.splice(i, 1);
-          if (Array.isArray(state.facts?.medicalNecessityGrounding)) {
-            state.facts.medicalNecessityGrounding.splice(i, 1);
+          if (Array.isArray(ws.facts?.medicalNecessityGrounding)) {
+            ws.facts.medicalNecessityGrounding.splice(i, 1);
           }
-          renderFacts();
-          renderNav();
+          ws.rerender("facts");
+          ws.touched("facts");
         });
         card.appendChild(removeBtn);
         list.appendChild(card);
@@ -3308,8 +3496,8 @@
           if (v) {
             arr.push(v);
             input.value = "";
-            renderFacts();
-            renderNav();
+            ws.rerender("facts");
+            ws.touched("facts");
           }
         }
       });
@@ -3330,7 +3518,7 @@
       { name: "medicalNecessityLanguage", label: "Medical necessity language", kind: "quotes" },
     ];
 
-    function renderChiefComplaintField(container, field, facts) {
+    function renderChiefComplaintField(container, field, facts, ws) {
       const wrap = document.createElement("div");
       wrap.className = "chip-field";
       const label = document.createElement("div");
@@ -3347,16 +3535,16 @@
       input.placeholder = field.placeholder;
       input.addEventListener("input", () => {
         facts[field.name] = input.value;
-        renderNav();
+        ws.touched("facts");
       });
       row.appendChild(input);
       wrap.appendChild(row);
       container.appendChild(wrap);
     }
 
-    function renderFacts() {
-      factsCardEl.innerHTML = "";
-      const f = state.facts;
+    function renderFacts(container, ws) {
+      container.innerHTML = "";
+      const f = ws.facts;
       for (const field of FACT_FIELDS) {
         if (field.kind !== "text" && !Array.isArray(f[field.name])) f[field.name] = [];
       }
@@ -3365,19 +3553,19 @@
         const slot = document.createElement("div");
         slot.className = "section-body";
         slot.dataset.slot = field.name;
-        factsCardEl.appendChild(slot);
+        container.appendChild(slot);
 
-        if (field.kind === "text") renderChiefComplaintField(slot, field, f);
-        else if (field.kind === "chips") renderChipField(slot, field.label, f[field.name], field.variant);
-        else renderNecessityField(slot, f[field.name]);
+        if (field.kind === "text") renderChiefComplaintField(slot, field, f, ws);
+        else if (field.kind === "chips") renderChipField(slot, field.label, f[field.name], field.variant, ws);
+        else renderNecessityField(slot, f[field.name], ws);
       }
     }
 
     // ---- Codes tab: insight cards ----
 
-    function renderCodes() {
-      codesContainer.innerHTML = "";
-      state.codes.forEach((row, i) => {
+    function renderCodes(container, ws) {
+      container.innerHTML = "";
+      ws.codes.forEach((row, i) => {
         if (!row.confidence) row.confidence = "";
         const card = document.createElement("div");
         card.className = "code-card";
@@ -3402,7 +3590,7 @@
         typeSelect.addEventListener("change", () => {
           row.codeType = typeSelect.value;
           badgeWrap.className = "code-badge-select " + (row.codeType === "CPT" ? "cpt" : "icd10");
-          renderNav();
+          ws.touched("codes");
         });
         badgeWrap.appendChild(typeSelect);
         const dot = document.createTextNode(" · ");
@@ -3414,7 +3602,7 @@
         codeInput.placeholder = "code";
         codeInput.addEventListener("input", () => {
           row.code = codeInput.value;
-          renderNav();
+          ws.touched("codes");
         });
         badgeWrap.appendChild(codeInput);
         main.appendChild(badgeWrap);
@@ -3453,8 +3641,8 @@
         });
         confSelect.addEventListener("change", () => {
           row.confidence = confSelect.value;
-          renderCodes();
-          renderNav();
+          ws.rerender("codes");
+          ws.touched("codes");
         });
         actions.appendChild(confSelect);
 
@@ -3463,9 +3651,9 @@
         removeBtn.className = "icon-btn";
         removeBtn.innerHTML = ICON_X;
         removeBtn.addEventListener("click", () => {
-          state.codes.splice(i, 1);
-          renderCodes();
-          renderNav();
+          ws.codes.splice(i, 1);
+          ws.rerender("codes");
+          ws.touched("codes");
         });
         actions.appendChild(removeBtn);
 
@@ -3499,13 +3687,13 @@
         rationaleInput.addEventListener("input", () => {
           row.rationale = rationaleInput.value;
           autoGrow(rationaleInput);
-          renderNav();
+          ws.touched("codes");
         });
         rationaleRow.appendChild(rationaleInput);
         card.appendChild(rationaleRow);
         requestAnimationFrame(() => autoGrow(rationaleInput));
 
-        codesContainer.appendChild(card);
+        container.appendChild(card);
       });
 
       const addBtn = document.createElement("button");
@@ -3513,11 +3701,11 @@
       addBtn.className = "btn add-row";
       addBtn.textContent = "Add code";
       addBtn.addEventListener("click", () => {
-        state.codes.push({ code: "", codeType: "ICD-10", description: "", confidence: "", rationale: "" });
-        renderCodes();
-        renderNav();
+        ws.codes.push({ code: "", codeType: "ICD-10", description: "", confidence: "", rationale: "" });
+        ws.rerender("codes");
+        ws.touched("codes");
       });
-      codesContainer.appendChild(addBtn);
+      container.appendChild(addBtn);
     }
 
     async function runSuggestCodes() {
@@ -3546,7 +3734,7 @@
         }
 
         state.codes = Array.isArray(data.suggestions) ? data.suggestions : [];
-        renderCodes();
+        renderCodes(codesContainer, claimWorkspace);
         codesStatusEl.textContent = state.codes.length ? "Done." : "No confident code suggestions — add some by hand below if you like.";
         codesStatusEl.className = "status";
         renderNav();
@@ -3565,7 +3753,7 @@
 
     // ---- Claim tab ----
 
-    function renderEditableTable(container, headers, rows, fields, onAdd, addLabel) {
+    function renderEditableTable(container, headers, rows, fields, onAdd, addLabel, ws) {
       container.innerHTML = "";
       const table = document.createElement("table");
       table.className = "rh-table";
@@ -3591,7 +3779,7 @@
           input.value = row[field] ?? "";
           input.addEventListener("input", (e) => {
             row[field] = field === "units" ? Number(e.target.value) || 0 : e.target.value;
-            renderNav();
+            ws.touched("claim");
           });
           td.appendChild(input);
           tr.appendChild(td);
@@ -3604,7 +3792,7 @@
         removeBtn.addEventListener("click", () => {
           rows.splice(i, 1);
           renderEditableTable(container, headers, rows, fields, onAdd, addLabel);
-          renderNav();
+          ws.touched("claim");
         });
         actionTd.appendChild(removeBtn);
         tr.appendChild(actionTd);
@@ -3620,7 +3808,7 @@
       addBtn.addEventListener("click", () => {
         onAdd();
         renderEditableTable(container, headers, rows, fields, onAdd, addLabel);
-        renderNav();
+        ws.touched("claim");
       });
       container.appendChild(addBtn);
     }
@@ -3654,7 +3842,7 @@
         state.claim = data.claim;
         state.reviewed = false;
         state.stediSubmission = null;
-        renderClaimForm();
+        renderClaimForm(claimFormEl, claimWorkspace);
         applyReviewUiState();
         renderNav();
         return true;
@@ -3860,7 +4048,7 @@
 
     submitStediBtn.addEventListener("click", () => runSubmitToStedi());
 
-    function claimLabeledInput(labelText, value, onChange, multiline) {
+    function claimLabeledInput(labelText, value, onChange, multiline, ws) {
       const label = document.createElement("label");
       label.textContent = labelText;
       const input = document.createElement(multiline ? "textarea" : "input");
@@ -3869,7 +4057,7 @@
       input.value = value || "";
       input.addEventListener("input", (e) => {
         onChange(e.target.value);
-        renderNav();
+        ws.touched("claim");
       });
       label.appendChild(input);
       return label;
@@ -3914,27 +4102,36 @@
       { name: "serviceLines", legend: "Service lines (CPT)" },
     ];
 
-    function claimFieldGrid(slot, fields, { singleColumn = false } = {}) {
+    function claimFieldGrid(slot, fields, ws, { singleColumn = false } = {}) {
       const grid = document.createElement("div");
       grid.className = "field-grid";
       if (singleColumn) grid.style.gridTemplateColumns = "1fr";
       for (const [label, value, onChange, multiline] of fields) {
-        grid.appendChild(claimLabeledInput(label, value, onChange, multiline));
+        grid.appendChild(claimLabeledInput(label, value, onChange, multiline, ws));
       }
       slot.appendChild(grid);
     }
 
-    function renderClaimForm() {
-      claimFormEl.innerHTML = "";
-      if (!state.claim) {
+    function renderClaimForm(container, ws) {
+      container.innerHTML = "";
+      if (!ws.claim) {
         const hint = document.createElement("p");
         hint.className = "status";
         hint.textContent = "No claim draft yet — click \"Populate claim\" above.";
-        claimFormEl.appendChild(hint);
+        container.appendChild(hint);
         return;
       }
-      const c = state.claim;
-      const slots = renderFieldGroups(claimFormEl, CLAIM_GROUPS);
+      const c = ws.claim;
+      // populateClaim always emits these blocks, but a stored artifact edited
+      // by hand or written by an older build may not -- and the editor writes
+      // through to them, so they have to exist to hold an edit. Reading one
+      // that was missing used to take the whole panel down.
+      c.patient = c.patient || {};
+      c.provider = c.provider || {};
+      c.payer = c.payer || {};
+      c.diagnoses = Array.isArray(c.diagnoses) ? c.diagnoses : [];
+      c.serviceLines = Array.isArray(c.serviceLines) ? c.serviceLines : [];
+      const slots = renderFieldGroups(container, CLAIM_GROUPS);
 
       if (Array.isArray(c.warnings) && c.warnings.length > 0) {
         const warnBox = document.createElement("div");
@@ -3959,19 +4156,19 @@
         ["Date of birth", c.patient.dob, (v) => (c.patient.dob = v)],
         ["Sex", c.patient.sex, (v) => (c.patient.sex = v)],
         ["Member ID", c.patient.memberId, (v) => (c.patient.memberId = v)],
-      ]);
+      ], ws);
 
       claimFieldGrid(slots.provider, [
         ["Name", c.provider.name, (v) => (c.provider.name = v)],
         ["NPI", c.provider.npi, (v) => (c.provider.npi = v)],
         ["Address", c.provider.address, (v) => (c.provider.address = v)],
         ["Date of service", c.dateOfService, (v) => (c.dateOfService = v)],
-      ]);
+      ], ws);
 
       claimFieldGrid(slots.payer, [
         ["Name", c.payer.name, (v) => (c.payer.name = v)],
         ["Payer ID", c.payer.payerId, (v) => (c.payer.payerId = v)],
-      ]);
+      ], ws);
 
       claimFieldGrid(
         slots.clinical,
@@ -3979,6 +4176,7 @@
           ["Chief complaint", c.chiefComplaint, (v) => (c.chiefComplaint = v)],
           ["Medical necessity notes", c.medicalNecessityNotes, (v) => (c.medicalNecessityNotes = v), true],
         ],
+        ws,
         { singleColumn: true }
       );
 
@@ -3988,7 +4186,8 @@
         c.diagnoses,
         ["pointer", "code", "description"],
         () => c.diagnoses.push({ pointer: "", code: "", description: "" }),
-        "Add diagnosis"
+        "Add diagnosis",
+        ws
       );
 
       renderEditableTable(
@@ -3997,7 +4196,8 @@
         c.serviceLines,
         ["code", "description", "diagnosisPointers", "units"],
         () => c.serviceLines.push({ code: "", description: "", diagnosisPointers: "", units: 1 }),
-        "Add service line"
+        "Add service line",
+        ws
       );
     }
 
@@ -4094,9 +4294,9 @@
       }
 
       renderTranscriptSummary();
-      renderFacts();
-      renderCodes();
-      renderClaimForm();
+      renderFacts(factsCardEl, claimWorkspace);
+      renderCodes(codesContainer, claimWorkspace);
+      renderClaimForm(claimFormEl, claimWorkspace);
       applyReviewUiState();
       updatePatientCaseBar();
       showTab("transcript");
@@ -4370,9 +4570,9 @@
     loadSavedState();
     transcriptEl.value = state.transcript;
     renderTranscriptSummary();
-    renderFacts();
-    renderCodes();
-    renderClaimForm();
+    renderFacts(factsCardEl, claimWorkspace);
+    renderCodes(codesContainer, claimWorkspace);
+    renderClaimForm(claimFormEl, claimWorkspace);
     applyReviewUiState();
     initIntake();
     showTab("transcript");

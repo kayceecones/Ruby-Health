@@ -195,6 +195,34 @@ fieldsets, filled through `renderFieldGroups()`. Adding a field or a group is
 an entry in that list — not another `appendChild` in the middle of a render
 function.
 
+### Editing, and workspaces
+
+The four editors — facts, codes, claim and the transcript field — take an
+explicit **workspace** rather than reaching for the global `state`. A workspace
+is whatever is being edited: `claimWorkspace` (the New Claim session state) or
+one built from an encounter's stored artifacts in the record view. It carries
+the data plus two calls:
+
+- `touched(stage)` — an edit happened; persist however this workspace does
+- `rerender(stage)` — redraw that stage's editor
+
+**A handler must capture its workspace at render time.** Reading a global at
+click time would edit whichever record happens to be open seconds later.
+
+The record view is editable until the payer has seen the claim — that is,
+until any claim on the encounter leaves `draft` (`encounterIsLocked`). After
+that it renders the read-only views with a line saying why, because the record
+is what was billed. **If the claims lookup fails, the record stays locked**: it
+must not unlock something it cannot vouch for.
+
+Edits write a **new artifact version** with `createdBy: "provider_edit"`, never
+an overwrite — so the revision list keeps the trail and a submitted claim still
+points at the artifact it was built from. Saves are debounced and always show
+their state; a silent save on a medical record is worse than a slow one.
+
+Pipeline actions — extract, suggest codes, populate, submit — stay on New
+Claim. The record view edits the record; it does not re-run the pipeline.
+
 ### Links
 
 **One link treatment, and it is `.rh-link`.** Ruby paired with an underline —
