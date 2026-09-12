@@ -123,7 +123,10 @@ export function populateClaim(facts, codes, providerProfile = null) {
     provider: providerProfile || {
       name: "Ruby Health Demo Practice",
       npi: "1999999984", // Stedi's published test NPI -- always valid in their sandbox
-      address: "123 Main St, Sample City, ST 00000",
+      // Structured, matching what a real provider profile carries. It used to
+      // be one string here and an object there, which is how the claim form
+      // came to render "[object Object]" in the address field.
+      address: { address1: "123 Main St", city: "Sample City", state: "CA", postalCode: "900010000" },
     },
     payer: {
       name: "Sample Payer Insurance",
