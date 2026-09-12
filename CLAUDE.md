@@ -245,6 +245,26 @@ their state; a silent save on a medical record is worse than a slow one.
 Pipeline actions — extract, suggest codes, populate, submit — stay on New
 Claim. The record view edits the record; it does not re-run the pipeline.
 
+### Walking into a step runs it
+
+On New Claim, entering a step runs the stage that fills it — the step buttons
+and the sidebar both go through `goToTab()`, and `STAGE_ON_ENTRY` says what
+each step needs and what fills it.
+
+**Only when the step is empty.** Re-running would overwrite what the provider
+edited by hand and spend another model call doing it, so a step that already
+has something in it is just shown. The button on each tab is the deliberate
+re-run. If you add a stage, give it `ready` and `filled` — getting `filled`
+wrong silently destroys edits.
+
+Entering a step whose prerequisite is missing navigates without running: one
+click never cascades three model calls. **Prepare claim** is the deliberate
+run-everything path.
+
+Each runner reports into its own tab's status line, which is no longer the tab
+being looked at — so `goToTab` puts a note on the destination while the stage
+runs, and leaves an error there if it fails.
+
 ### Links
 
 **One link treatment, and it is `.rh-link`.** Ruby paired with an underline —

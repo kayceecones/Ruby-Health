@@ -3034,9 +3034,9 @@
     const stediStatusEl = document.getElementById("stediStatus");
     const stediResultEl = document.getElementById("stediResult");
 
-    document.getElementById("toFactsBtn").addEventListener("click", () => showTab("facts"));
-    document.getElementById("toCodesBtn").addEventListener("click", () => showTab("codes"));
-    document.getElementById("toClaimBtn").addEventListener("click", () => showTab("claim"));
+    document.getElementById("toFactsBtn").addEventListener("click", () => goToTab("facts"));
+    document.getElementById("toCodesBtn").addEventListener("click", () => goToTab("codes"));
+    document.getElementById("toClaimBtn").addEventListener("click", () => goToTab("claim"));
 
     function showTab(tab) {
       currentTab = tab;
@@ -3067,7 +3067,69 @@
       saveState();
     }
 
-    navButtons.forEach((btn) => btn.addEventListener("click", () => showTab(btn.dataset.tab)));
+    // ---- Walking into a step runs it -------------------------------------
+    //
+    // "Continue to Facts" used to only move you to an empty Facts card, which
+    // you then had to fill by going back for the Extract button. Entering a
+    // step now runs the stage that fills it.
+    //
+    // Only when that step is empty. Re-running would overwrite whatever the
+    // provider edited by hand -- and spend another model call to do it -- so a
+    // step with something already in it is simply shown. The button on each
+    // tab is how you deliberately re-run one.
+    const STAGE_ON_ENTRY = {
+      facts: {
+        working: "Extracting clinical facts from the context...",
+        ready: () => state.transcript.trim().length > 0,
+        filled: hasFacts,
+        run: () => runExtract(),
+      },
+      codes: {
+        working: "Suggesting codes from the clinical facts...",
+        ready: hasFacts,
+        filled: () => state.codes.length > 0,
+        run: () => runSuggestCodes(),
+      },
+      claim: {
+        working: "Building the claim from the facts and codes...",
+        ready: () => hasFacts() && state.codes.length > 0,
+        filled: () => Boolean(state.claim),
+        run: () => runPopulateClaim(),
+      },
+    };
+
+    // Each runner reports into its own tab's status line, which is no longer
+    // the tab you are looking at once the step runs on the way in -- so the
+    // destination says what is happening rather than sitting there blank.
+    function stageNote(tab, text, isError) {
+      let note = panels[tab].querySelector("[data-stage-note]");
+      if (!note) {
+        note = document.createElement("div");
+        note.dataset.stageNote = "";
+        const subtitle = panels[tab].querySelector(".page-subtitle");
+        subtitle ? subtitle.after(note) : panels[tab].prepend(note);
+      }
+      note.className = "status" + (isError ? " error" : "");
+      note.textContent = text;
+      return note;
+    }
+
+    async function goToTab(tab) {
+      showTab(tab);
+      panels[tab].querySelector("[data-stage-note]")?.remove();
+
+      const stage = STAGE_ON_ENTRY[tab];
+      // Nothing to run, already run, or the step before it has not been done --
+      // in which case the tab's own empty state already says what is missing.
+      if (!stage || stage.filled() || !stage.ready()) return;
+
+      const note = stageNote(tab, stage.working, false);
+      const ok = await stage.run();
+      if (ok) note.remove();
+      else stageNote(tab, "That step didn't finish. The button on this tab will try again.", true);
+    }
+
+    navButtons.forEach((btn) => btn.addEventListener("click", () => goToTab(btn.dataset.tab)));
 
     // ---- Transcript tab ----
 
