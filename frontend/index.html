@@ -61,6 +61,10 @@
     /* ---- History route ---- */
     #historyView.route.active, #patientsView.route.active, #recordView.route.active { display: block; }
     #historyView, #patientsView, #recordView { flex: 1; min-width: 0; padding: 32px 44px; max-width: 900px; }
+    /* Routes that browse a record rather than work a queue have no nav of
+       their own, so the sidebar steps out of the way rather than standing
+       there empty. */
+    #sidebar[hidden] { display: none; }
 
     /* A claim row names two things -- a claim and a patient -- so it is not a
        single click target the way an activity row is. Each name is its own
@@ -71,11 +75,11 @@
     .claim-row .claim-line { font-size: 13.5px; font-weight: 600; }
     .claim-row .claim-meta { font-size: 12px; color: var(--ink-2); }
     .bucket-count {
-      margin-left: 6px; font-size: 10.5px; font-weight: 700;
+      font-size: 10.5px; font-weight: 700;
       border-radius: 20px; padding: 1px 6px;
       background: var(--border-soft); color: var(--ink-2);
     }
-    .tab.active .bucket-count { background: rgba(251, 250, 247, 0.25); color: var(--cream); }
+
     .history-breadcrumb { font-size: 12.5px; color: var(--ink-2); margin-bottom: 16px; }
     .history-breadcrumb a { cursor: pointer; }
     .history-row-link { background: none; border: none; padding: 0; margin: 0; width: 100%; text-align: left; }
@@ -211,6 +215,11 @@
     #logoRow .wordmark { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
 
     #navList { display: flex; flex-direction: column; gap: 2px; }
+    .nav-group { display: flex; flex-direction: column; gap: 2px; }
+    /* A bucket's count is the reason to look at the sidebar at all, so it sits
+       at the end of the row where the pipeline nav puts its dot. */
+    .nav-item .bucket-count { margin-left: auto; }
+    .nav-item.active .bucket-count { background: rgba(251, 250, 247, 0.25); color: var(--cream); }
     .nav-item {
       display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px;
       color: var(--ink-2); border: none; background: none; text-align: left; width: 100%; font-size: 13.5px; font-weight: 600;
@@ -416,7 +425,7 @@
     @keyframes rh-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
     /* ---- Facts: chips & quotes ---- */
-    .chip-field + .chip-field { margin-top: 20px; }
+    .section-body + .section-body { margin-top: 20px; }
     .chip-list { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .chip {
       display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 500;
@@ -566,14 +575,49 @@
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
         <span>New Claim</span>
       </button>
-      <button class="rail-item" data-route="patients" type="button">
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        <span>Patients</span>
-      </button>
       <button class="rail-item" data-route="history" type="button">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
         <span>History</span>
       </button>
+      <button class="rail-item" data-route="patients" type="button">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Patients</span>
+      </button>
+    </div>
+
+    <div id="sidebar">
+      <div id="logoRow">
+        <div id="logoMark">RH</div>
+        <div class="wordmark">Ruby Health</div>
+      </div>
+
+      <div id="navList">
+        <div id="claimNav" class="nav-group">
+        <button class="nav-item" data-tab="transcript" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/><path d="M8 21h8"/></svg>
+          <span class="nav-label">Transcript</span>
+          <span class="nav-dot"></span>
+        </button>
+        <button class="nav-item" data-tab="facts" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.5 5.5L19 9l-5.5 1.5L12 16l-1.5-5.5L5 9l5.5-1.5L12 2z"/></svg>
+          <span class="nav-label">Facts</span>
+          <span class="nav-dot"></span>
+        </button>
+        <button class="nav-item" data-tab="codes" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.6 2.7 20 10.1a2 2 0 0 1 0 2.8l-6.9 6.9a2 2 0 0 1-2.8 0L3 12.5V4a1.3 1.3 0 0 1 1.3-1.3H12.6z"/><circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none"/></svg>
+          <span class="nav-label">Codes</span>
+          <span class="nav-dot"></span>
+        </button>
+        <button class="nav-item" data-tab="claim" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><path d="M9.5 12.5h5M9.5 15.5h5M9.5 9.5h2"/></svg>
+          <span class="nav-label">Claim &amp; Review</span>
+          <span class="nav-dot"></span>
+        </button>
+        </div>
+        <!-- Filled by loadHistoryBuckets: the same nav shape, listing claim
+             buckets instead of pipeline steps. -->
+        <div id="historyNav" class="nav-group" hidden></div>
+      </div>
     </div>
 
     <div id="appShell" class="route">
@@ -612,36 +656,6 @@
       </div>
     </div>
 
-    <div id="sidebar">
-      <div id="logoRow">
-        <div id="logoMark">RH</div>
-        <div class="wordmark">Ruby Health</div>
-      </div>
-
-      <div id="navList">
-        <button class="nav-item" data-tab="transcript" type="button">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/><path d="M8 21h8"/></svg>
-          <span class="nav-label">Transcript</span>
-          <span class="nav-dot"></span>
-        </button>
-        <button class="nav-item" data-tab="facts" type="button">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.5 5.5L19 9l-5.5 1.5L12 16l-1.5-5.5L5 9l5.5-1.5L12 2z"/></svg>
-          <span class="nav-label">Facts</span>
-          <span class="nav-dot"></span>
-        </button>
-        <button class="nav-item" data-tab="codes" type="button">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.6 2.7 20 10.1a2 2 0 0 1 0 2.8l-6.9 6.9a2 2 0 0 1-2.8 0L3 12.5V4a1.3 1.3 0 0 1 1.3-1.3H12.6z"/><circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none"/></svg>
-          <span class="nav-label">Codes</span>
-          <span class="nav-dot"></span>
-        </button>
-        <button class="nav-item" data-tab="claim" type="button">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><path d="M9.5 12.5h5M9.5 15.5h5M9.5 9.5h2"/></svg>
-          <span class="nav-label">Claim &amp; Review</span>
-          <span class="nav-dot"></span>
-        </button>
-      </div>
-
-    </div>
 
     <div id="main">
       <div id="prepareClaimBar">
@@ -860,8 +874,15 @@
       record: document.getElementById("recordView"),
     };
 
+    const sidebarEl = document.getElementById("sidebar");
+    const claimNavEl = document.getElementById("claimNav");
+    const historyNavEl = document.getElementById("historyNav");
+
     function activateRoute(route, { rail = route } = {}) {
       currentRoute = route;
+      claimNavEl.hidden = route !== "new-claim";
+      historyNavEl.hidden = route !== "history";
+      sidebarEl.hidden = claimNavEl.hidden && historyNavEl.hidden;
       for (const [key, el] of Object.entries(routes)) {
         el.classList.toggle("active", key === route);
       }
@@ -1315,9 +1336,11 @@
       historyBucketsEl.innerHTML = "";
       const view = buildTabbedPanels(
         CLAIM_BUCKETS.map((b) => ({ name: b.name, label: b.label })),
-        { label: "history" }
+        { label: "history", orientation: "vertical" }
       );
       historyBucketsEl.appendChild(view.element);
+      historyNavEl.innerHTML = "";
+      historyNavEl.appendChild(view.strip);
 
       loadActivity(view.panels.all);
 
@@ -1341,7 +1364,6 @@
           const count = document.createElement("span");
           count.className = "bucket-count";
           count.textContent = String(rows.length);
-          view.tabs[bucket.name].textContent = bucket.label;
           view.tabs[bucket.name].appendChild(count);
           renderRowCard(view.panels[bucket.name], rows, renderClaimRow, bucket.empty);
         }
@@ -1407,17 +1429,19 @@
 
     // One tab component, used wherever content is tabbed. Returns the element
     // to drop into a slot plus the panel each tab writes into.
-    function buildTabbedPanels(names, { label }) {
+    function buildTabbedPanels(names, { label, orientation = "horizontal" }) {
       // A name alone, or { name, label } where the tab reads differently from
       // the key it is stored under.
       const items = names.map((n) =>
         typeof n === "string" ? { name: n, label: n.charAt(0).toUpperCase() + n.slice(1) } : n
       );
+      const vertical = orientation === "vertical";
       const wrap = document.createElement("div");
       const strip = document.createElement("div");
-      strip.className = "tabs";
+      strip.className = vertical ? "nav-group" : "tabs";
       strip.setAttribute("role", "tablist");
       strip.setAttribute("aria-label", label);
+      strip.setAttribute("aria-orientation", vertical ? "vertical" : "horizontal");
       const panels = {};
       const buttons = {};
 
@@ -1434,16 +1458,25 @@
       items.forEach(({ name, label: text }, i) => {
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "tab";
+        btn.className = vertical ? "nav-item" : "tab";
         btn.id = `tab-${label}-${name}`;
         btn.setAttribute("role", "tab");
         btn.setAttribute("aria-controls", `panel-${label}-${name}`);
-        btn.textContent = text;
+        if (vertical) {
+          const labelEl = document.createElement("span");
+          labelEl.className = "nav-label";
+          labelEl.textContent = text;
+          btn.appendChild(labelEl);
+        } else {
+          btn.textContent = text;
+        }
         btn.addEventListener("click", () => select(name));
         // Arrow keys move between tabs, which is what a tablist is expected
         // to do once it announces itself as one.
         btn.addEventListener("keydown", (e) => {
-          const delta = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+          const forward = vertical ? "ArrowDown" : "ArrowRight";
+          const back = vertical ? "ArrowUp" : "ArrowLeft";
+          const delta = e.key === forward ? 1 : e.key === back ? -1 : 0;
           if (!delta) return;
           e.preventDefault();
           const next = items[(i + delta + items.length) % items.length].name;
@@ -1463,9 +1496,11 @@
         wrap.appendChild(panel);
       });
 
-      wrap.insertBefore(strip, wrap.firstChild);
+      // A vertical strip belongs in the sidebar, not above the panels, so the
+      // caller places it; a horizontal one sits where it always has.
+      if (!vertical) wrap.insertBefore(strip, wrap.firstChild);
       select(items[0].name);
-      return { element: wrap, panels, tabs: buttons };
+      return { element: wrap, strip, panels, tabs: buttons };
     }
 
     function sortCasesOpenFirst(cases) {
@@ -3328,6 +3363,7 @@
 
       for (const field of FACT_FIELDS) {
         const slot = document.createElement("div");
+        slot.className = "section-body";
         slot.dataset.slot = field.name;
         factsCardEl.appendChild(slot);
 

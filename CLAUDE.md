@@ -229,6 +229,12 @@ living inside either. `recordOrigin` is set before navigating and stamped onto
 rail item stays lit. Leaving the record clears that trail. If you add another
 way in, set `recordOrigin` first or the breadcrumb will claim the wrong path.
 
+The sidebar is shared, not New Claim's. It sits beside the routes and carries
+one `.nav-group` per route — pipeline steps on New Claim, claim buckets on
+History — and hides itself where a route has no nav. A vertical nav comes from
+`buildTabbedPanels(..., { orientation: "vertical" })`, the same component as the
+horizontal tabs, so both keep the same ARIA and keyboard wiring.
+
 History's buckets are `CLAIM_BUCKETS` — a list with a `match` on claim status.
 Add a bucket there, not by hand-building another tab strip. The one without a
 `match` is All history, which is the activity feed rather than a slice of the
