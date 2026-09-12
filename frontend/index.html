@@ -4111,13 +4111,17 @@
 
       // Each step re-runs on whatever the previous step just produced, the
       // same as clicking through the tabs by hand -- this only removes the
-      // clicking, not the review. Landing on the Claim tab still needs a
-      // human to look it over before anything is submitted to a payer.
+      // clicking, not the review.
+      //
+      // It fills the steps and leaves you where you are. Jumping to the Claim
+      // tab skipped the provider past the facts and codes it had just written,
+      // which made it look as though nothing had been filled in -- the nav
+      // dots and the status line say what happened instead, and the steps are
+      // there to be read in order.
       const extracted = await runExtract();
       if (!extracted) {
-        prepareClaimStatusEl.textContent = extractStatusEl.textContent || "Extraction failed.";
+        prepareClaimStatusEl.textContent = extractStatusEl.textContent || "Extraction failed at the Facts step.";
         prepareClaimStatusEl.className = "status error";
-        showTab("transcript");
         prepareClaimBtn.disabled = false;
         return;
       }
@@ -4125,9 +4129,8 @@
       prepareClaimStatusEl.textContent = "Suggesting codes...";
       const coded = await runSuggestCodes();
       if (!coded) {
-        prepareClaimStatusEl.textContent = codesStatusEl.textContent || "Code suggestion failed.";
+        prepareClaimStatusEl.textContent = codesStatusEl.textContent || "Code suggestion failed at the Codes step.";
         prepareClaimStatusEl.className = "status error";
-        showTab("codes");
         prepareClaimBtn.disabled = false;
         return;
       }
@@ -4135,16 +4138,15 @@
       prepareClaimStatusEl.textContent = "Populating the claim...";
       const populated = await runPopulateClaim();
       if (!populated) {
-        prepareClaimStatusEl.textContent = claimStatusEl.textContent || "Claim population failed.";
+        prepareClaimStatusEl.textContent = claimStatusEl.textContent || "Claim population failed at the Claim step.";
         prepareClaimStatusEl.className = "status error";
-        showTab("codes");
         prepareClaimBtn.disabled = false;
         return;
       }
 
-      prepareClaimStatusEl.textContent = "Done -- claim prepared below. Review it before submitting.";
+      prepareClaimStatusEl.textContent =
+        "Facts, codes and the claim are all filled in. Walk the steps to review them before submitting.";
       prepareClaimStatusEl.className = "status";
-      showTab("claim");
       prepareClaimBtn.disabled = false;
     }
 

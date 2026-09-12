@@ -304,6 +304,12 @@ Entering a step whose prerequisite is missing navigates without running: one
 click never cascades three model calls. **Prepare claim** is the deliberate
 run-everything path.
 
+**Prepare claim fills the steps and leaves you where you are.** It used to end
+on the Claim tab, which skipped the provider past the facts and codes it had
+just written — and made it look as though nothing had been filled in. The nav
+dots and the status line report what happened; the steps are there to be read
+in order. Nothing in the New Claim flow should navigate on the user's behalf.
+
 Each runner reports into its own tab's status line, which is no longer the tab
 being looked at — so `goToTab` puts a note on the destination while the stage
 runs, and leaves an error there if it fails.
