@@ -195,6 +195,76 @@ fieldsets, filled through `renderFieldGroups()`. Adding a field or a group is
 an entry in that list — not another `appendChild` in the middle of a render
 function.
 
+### "Context", not "transcript"
+
+The first stage is **Context** everywhere a provider reads it: what they bring
+to the encounter, however they brought it — recorded, pasted or typed.
+
+**The stored stage key is still `transcript`**, and so is the `transcript`
+field on the API. That is deliberate, not a half-finished rename: the stage is
+a Notion select option carried by every artifact already written, so renaming
+it is a data migration. If you rename it, migrate the stored rows in the same
+change — and leave the API field alone unless you version the endpoint.
+
+Four ways in: record, upload, paste, type. Upload is **plain text only**
+(`attachContextUpload` / `readContextFile`, one implementation used by both the
+New Claim card and the record view). A PDF or Word file is a container, not
+text — reading one as text drops binary into a clinical record rather than
+failing, so those are refused by name with a message that says what to do
+instead. Supporting them means a parser and somewhere to keep the file; the
+schema's Document slot is reserved for that.
+
+An upload **appends** to whatever is already in the field. Never replace: a
+dictated conversation is not something to lose to a stray drop.
+
+### Editing, and workspaces
+
+The four editors — facts, codes, claim and the transcript field — take an
+explicit **workspace** rather than reaching for the global `state`. A workspace
+is whatever is being edited: `claimWorkspace` (the New Claim session state) or
+one built from an encounter's stored artifacts in the record view. It carries
+the data plus two calls:
+
+- `touched(stage)` — an edit happened; persist however this workspace does
+- `rerender(stage)` — redraw that stage's editor
+
+**A handler must capture its workspace at render time.** Reading a global at
+click time would edit whichever record happens to be open seconds later.
+
+The record view is editable until the payer has seen the claim — that is,
+until any claim on the encounter leaves `draft` (`encounterIsLocked`). After
+that it renders the read-only views with a line saying why, because the record
+is what was billed. **If the claims lookup fails, the record stays locked**: it
+must not unlock something it cannot vouch for.
+
+Edits write a **new artifact version** with `createdBy: "provider_edit"`, never
+an overwrite — so the revision list keeps the trail and a submitted claim still
+points at the artifact it was built from. Saves are debounced and always show
+their state; a silent save on a medical record is worse than a slow one.
+
+Pipeline actions — extract, suggest codes, populate, submit — stay on New
+Claim. The record view edits the record; it does not re-run the pipeline.
+
+### Walking into a step runs it
+
+On New Claim, entering a step runs the stage that fills it — the step buttons
+and the sidebar both go through `goToTab()`, and `STAGE_ON_ENTRY` says what
+each step needs and what fills it.
+
+**Only when the step is empty.** Re-running would overwrite what the provider
+edited by hand and spend another model call doing it, so a step that already
+has something in it is just shown. The button on each tab is the deliberate
+re-run. If you add a stage, give it `ready` and `filled` — getting `filled`
+wrong silently destroys edits.
+
+Entering a step whose prerequisite is missing navigates without running: one
+click never cascades three model calls. **Prepare claim** is the deliberate
+run-everything path.
+
+Each runner reports into its own tab's status line, which is no longer the tab
+being looked at — so `goToTab` puts a note on the destination while the stage
+runs, and leaves an error there if it fails.
+
 ### Links
 
 **One link treatment, and it is `.rh-link`.** Ruby paired with an underline —
