@@ -212,6 +212,21 @@ must carry the treatment.
 - **Payer and provider have no views**, so their names stay plain text until
   those pages exist. Don't style them as links in the meantime.
 
+### Acting on a claim from History
+
+History reads the record; it does not edit it in place. The exception is
+acting on a claim, which a provider has to be able to do from where they are
+looking at it. `renderClaimActions()` is the one place that decides what a
+claim offers, keyed on its status — a `draft` claim gets **Submit**, anything
+the payer has seen gets **Amend**, and an appeal appears only where a denial
+left money at risk. Add a pathway there, not by hanging another button off a
+card, so a card can never offer an action its status cannot support.
+
+Irreversible actions sit in a `.submit-actions` block: set apart behind a
+rule, never flush against content someone was only reading. Amend rows default
+to **Keep** — dropping a code is an explicit choice, never implied by an empty
+field.
+
 ### Color
 
 `--gold` is decorative only — dots, rules, borders. It fails WCAG AA as text.
