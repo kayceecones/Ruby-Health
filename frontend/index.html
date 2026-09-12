@@ -1226,6 +1226,16 @@
         match: (c) => c.status === "denied",
         empty: "No denied claims to appeal or correct.",
       },
+      // Last of the claim buckets because it is the only one that is finished
+      // work rather than a queue. "Accepted" and not "Paid": the payer has
+      // taken the claim for processing, which is not the same as having paid
+      // it, and labelling it Paid would promise money that has not arrived.
+      {
+        name: "accepted",
+        label: "Accepted",
+        match: (c) => c.status === "accepted",
+        empty: "Nothing accepted yet. An accepted claim needs nothing further from you.",
+      },
       // No match: this one is the activity feed, not a slice of the claims.
       { name: "all", label: "All history" },
     ];
