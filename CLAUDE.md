@@ -206,6 +206,17 @@ a Notion select option carried by every artifact already written, so renaming
 it is a data migration. If you rename it, migrate the stored rows in the same
 change — and leave the API field alone unless you version the endpoint.
 
+Four ways in: record, upload, paste, type. Upload is **plain text only**
+(`attachContextUpload` / `readContextFile`, one implementation used by both the
+New Claim card and the record view). A PDF or Word file is a container, not
+text — reading one as text drops binary into a clinical record rather than
+failing, so those are refused by name with a message that says what to do
+instead. Supporting them means a parser and somewhere to keep the file; the
+schema's Document slot is reserved for that.
+
+An upload **appends** to whatever is already in the field. Never replace: a
+dictated conversation is not something to lose to a stray drop.
+
 ### Editing, and workspaces
 
 The four editors — facts, codes, claim and the transcript field — take an

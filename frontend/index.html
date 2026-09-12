@@ -164,6 +164,10 @@
       border: 1px solid var(--border); background: var(--card); color: var(--ink);
     }
     .amend-row input { min-width: 110px; }
+    /* The whole context field is the drop target, so a dragged file does not
+       have to be aimed at a small button. */
+    .drop-active { outline: 2px dashed var(--ruby); outline-offset: 3px; border-radius: 10px; }
+
     .record-locked {
       font-size: 12.5px; color: var(--ink-2); background: var(--card);
       border: 1px solid var(--border-soft); border-radius: 8px;
@@ -687,7 +691,7 @@
 
       <div id="panelTranscript" class="tabpanel">
         <h1 class="page-title">Context</h1>
-        <div class="page-subtitle">The clinical context for this encounter -- record it, paste it, or type it. Nothing here navigates you anywhere automatically.</div>
+        <div class="page-subtitle">The clinical context for this encounter -- record it, upload a text file, paste it, or type it. Nothing here navigates you anywhere automatically.</div>
 
         <div class="card" id="micControlCard">
           <div id="micStateRow">
@@ -720,9 +724,11 @@
               <span id="transcriptListeningPill"><span class="dot"></span>Listening</span>
             </div>
             <div style="display:flex; gap:8px;">
+              <button id="uploadContextBtn" class="btn" type="button">Upload a file</button>
               <button id="cleanupBtn" class="btn" type="button">Clean up wording</button>
               <button id="extractBtn" class="btn btn-primary" type="button">Extract clinical facts</button>
             </div>
+            <input id="uploadContextInput" type="file" accept=".txt,.md,.markdown,.csv,text/*" hidden />
           </div>
 
           <div id="transcriptSummaryBox" class="summary-callout" style="display:none;">
@@ -736,6 +742,7 @@
 
           <textarea id="transcript" placeholder="Paste or type the clinical context here, or use the mic above..."></textarea>
           <div id="micInterim"></div>
+          <div id="uploadContextStatus" class="status"></div>
           <div id="cleanupStatus" class="status"></div>
           <div id="extractStatus" class="status"></div>
         </div>
@@ -1970,6 +1977,7 @@
     function renderStageEditor(stage, host, ws) {
       if (stage === "transcript") {
         host.innerHTML = "";
+
         const textarea = document.createElement("textarea");
         textarea.className = "ro-transcript-edit";
         textarea.value = ws.transcript;
@@ -1979,7 +1987,44 @@
           autoGrow(textarea);
           ws.touched("transcript");
         });
+
+        // The same four ways in as New Claim, minus the mic: a record is
+        // usually corrected by pasting or dropping in what was missed.
+        const bar = document.createElement("div");
+        bar.style.marginBottom = "10px";
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn";
+        button.textContent = "Upload a file";
+        const fileInput = document.createElement("input");
+        fileInput.type = "file";
+        fileInput.accept = ".txt,.md,.markdown,.csv,text/*";
+        fileInput.hidden = true;
+        const status = document.createElement("div");
+        status.className = "status";
+        bar.appendChild(button);
+        bar.appendChild(fileInput);
+
+        attachContextUpload({
+          button,
+          fileInput,
+          dropZone: textarea,
+          getExisting: () => ws.transcript,
+          apply: (text) => {
+            ws.transcript = text;
+            textarea.value = text;
+            autoGrow(textarea);
+            ws.touched("transcript");
+          },
+          setStatus: (text, isError) => {
+            status.textContent = text;
+            status.className = "status" + (isError ? " error" : "");
+          },
+        });
+
+        host.appendChild(bar);
         host.appendChild(textarea);
+        host.appendChild(status);
         requestAnimationFrame(() => autoGrow(textarea));
         return;
       }
@@ -3046,6 +3091,128 @@
       state.transcript = transcriptEl.value;
       invalidateSummary();
       renderNav();
+    });
+
+    // ---- Uploading context ------------------------------------------------
+    //
+    // The fourth way in, alongside recording, pasting and typing. Plain text
+    // only, and it says so: a PDF or a Word file is a container, not text, and
+    // reading one as text would drop a page of binary into a clinical record
+    // rather than failing. Those want a parser and a place to keep the file,
+    // which is its own piece of work.
+
+    const CONTEXT_TEXT_EXTENSIONS = [".txt", ".md", ".markdown", ".csv", ".log"];
+    // Comfortably past any clinical note; small enough that a mis-picked file
+    // is caught before it is read rather than after.
+    const CONTEXT_MAX_BYTES = 2 * 1024 * 1024;
+
+    class ContextFileError extends Error {}
+
+    function readContextFile(file) {
+      const name = file.name || "that file";
+      const lower = name.toLowerCase();
+      const looksBinary = /\.(pdf|docx?|rtf|pages|odt|jpe?g|png|heic|zip)$/.test(lower);
+
+      if (looksBinary) {
+        throw new ContextFileError(
+          `Ruby can't read ${name.split(".").pop().toUpperCase()} files yet -- only plain text. ` +
+            "Copy the text out and paste it in, or save it as .txt."
+        );
+      }
+      if (!CONTEXT_TEXT_EXTENSIONS.some((ext) => lower.endsWith(ext)) && !(file.type || "").startsWith("text/")) {
+        throw new ContextFileError(`${name} doesn't look like a text file. Plain text only for now (.txt, .md, .csv).`);
+      }
+      if (file.size > CONTEXT_MAX_BYTES) {
+        throw new ContextFileError(`${name} is larger than 2 MB, which is far past a clinical note. Trim it or paste the relevant part.`);
+      }
+
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new ContextFileError(`Couldn't read ${name}.`));
+        reader.onload = () => {
+          const text = String(reader.result || "");
+          // A file can carry a text extension and still be binary. Dumping
+          // that into the record would be worse than refusing it.
+          if (/\u0000|\ufffd{3}/.test(text)) {
+            reject(new ContextFileError(`${name} doesn't appear to be readable text.`));
+            return;
+          }
+          if (!text.trim()) {
+            reject(new ContextFileError(`${name} is empty.`));
+            return;
+          }
+          resolve({ text: text.trim(), name });
+        };
+        reader.readAsText(file);
+      });
+    }
+
+    // One implementation, used by the New Claim context card and by the record
+    // view's context editor.
+    function attachContextUpload({ button, fileInput, dropZone, getExisting, apply, setStatus }) {
+      const take = async (file) => {
+        if (!file) return;
+        try {
+          const { text, name } = await readContextFile(file);
+          const existing = (getExisting() || "").trim();
+          // Never silently replace what is already there -- a dictated
+          // conversation is not something to lose to a stray drop.
+          apply(existing ? `${existing}\n\n${text}` : text);
+          setStatus(existing ? `Added ${name} below what was already here.` : `Loaded ${name}.`, false);
+        } catch (err) {
+          if (err instanceof ContextFileError) setStatus(err.message, true);
+          else {
+            console.error("Reading an uploaded context file failed:", err);
+            setStatus("Couldn't read that file.", true);
+          }
+        }
+      };
+
+      button?.addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", () => {
+        take(fileInput.files?.[0]);
+        // Reset, so picking the same file twice still fires a change.
+        fileInput.value = "";
+      });
+
+      if (dropZone) {
+        const stop = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        };
+        dropZone.addEventListener("dragover", (e) => {
+          stop(e);
+          dropZone.classList.add("drop-active");
+        });
+        dropZone.addEventListener("dragleave", (e) => {
+          stop(e);
+          dropZone.classList.remove("drop-active");
+        });
+        dropZone.addEventListener("drop", (e) => {
+          stop(e);
+          dropZone.classList.remove("drop-active");
+          take(e.dataTransfer?.files?.[0]);
+        });
+      }
+    }
+
+    const uploadContextStatusEl = document.getElementById("uploadContextStatus");
+    attachContextUpload({
+      button: document.getElementById("uploadContextBtn"),
+      fileInput: document.getElementById("uploadContextInput"),
+      dropZone: transcriptEl,
+      getExisting: () => transcriptEl.value,
+      apply: (text) => {
+        transcriptEl.value = text;
+        state.transcript = text;
+        autoGrow(transcriptEl);
+        saveState();
+        renderNav();
+      },
+      setStatus: (text, isError) => {
+        uploadContextStatusEl.textContent = text;
+        uploadContextStatusEl.className = "status" + (isError ? " error" : "");
+      },
     });
 
     cleanupBtn.addEventListener("click", async () => {
