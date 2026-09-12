@@ -59,8 +59,23 @@
     [hidden] { display: none !important; }
 
     /* ---- History route ---- */
-    #historyView.route.active { display: block; }
-    #historyView { flex: 1; min-width: 0; padding: 32px 44px; max-width: 900px; }
+    #historyView.route.active, #patientsView.route.active, #recordView.route.active { display: block; }
+    #historyView, #patientsView, #recordView { flex: 1; min-width: 0; padding: 32px 44px; max-width: 900px; }
+
+    /* A claim row names two things -- a claim and a patient -- so it is not a
+       single click target the way an activity row is. Each name is its own
+       link instead. */
+    .claim-row { display: flex; align-items: center; gap: 14px; padding: 13px 16px; }
+    .claim-row + .claim-row { border-top: 1px solid var(--border-soft); }
+    .claim-row .claim-main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+    .claim-row .claim-line { font-size: 13.5px; font-weight: 600; }
+    .claim-row .claim-meta { font-size: 12px; color: var(--ink-2); }
+    .bucket-count {
+      margin-left: 6px; font-size: 10.5px; font-weight: 700;
+      border-radius: 20px; padding: 1px 6px;
+      background: var(--border-soft); color: var(--ink-2);
+    }
+    .tab.active .bucket-count { background: rgba(251, 250, 247, 0.25); color: var(--cream); }
     .history-breadcrumb { font-size: 12.5px; color: var(--ink-2); margin-bottom: 16px; }
     .history-breadcrumb a { cursor: pointer; }
     .history-row-link { background: none; border: none; padding: 0; margin: 0; width: 100%; text-align: left; }
@@ -551,6 +566,10 @@
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
         <span>New Claim</span>
       </button>
+      <button class="rail-item" data-route="patients" type="button">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Patients</span>
+      </button>
       <button class="rail-item" data-route="history" type="button">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
         <span>History</span>
@@ -747,24 +766,24 @@
     </div>
     </div>
 
+    <div id="patientsView" class="route">
+      <h1 class="page-title">Patients</h1>
+      <div class="page-subtitle">Everyone on file, and the cases and visits filed under them.</div>
+      <input id="historyPatientSearch" class="row-input" type="text" placeholder="Search patients by name..." style="margin-bottom: 12px;" />
+      <div id="historyPatientList"></div>
+    </div>
+
     <div id="historyView" class="route">
+      <h1 class="page-title">History</h1>
+      <div class="page-subtitle">Claims grouped by what they are waiting on.</div>
+      <div id="historyBuckets"></div>
+    </div>
+
+    <!-- One patient, case or encounter, opened from either Patients or
+         History. It is its own route because both of those lead here and the
+         breadcrumb has to say which way you came in. -->
+    <div id="recordView" class="route">
       <nav id="historyBreadcrumb" class="history-breadcrumb" aria-label="Breadcrumb" hidden></nav>
-
-      <!-- The root's title lives inside #historyRoot, not above it: a drill-down
-           view renders its own .page-title, and two page titles at once is what
-           made "History / Recent activity..." sit over a single encounter. -->
-      <div id="historyRoot">
-        <h1 class="page-title">History</h1>
-        <div class="page-subtitle">Recent activity, and every patient's cases and visits.</div>
-
-        <div class="section-title">Recent activity</div>
-        <div id="historyActivity"></div>
-
-        <div class="section-title">Patients</div>
-        <input id="historyPatientSearch" class="row-input" type="text" placeholder="Search patients by name..." style="margin-bottom: 12px;" />
-        <div id="historyPatientList"></div>
-      </div>
-
       <div id="historyPatientView" hidden></div>
       <div id="historyCaseView" hidden></div>
       <div id="historyEncounterView" hidden></div>
@@ -834,22 +853,34 @@
     const railButtons = Array.from(document.querySelectorAll(".rail-item"));
     const routes = {
       "new-claim": document.getElementById("appShell"),
+      patients: document.getElementById("patientsView"),
       history: document.getElementById("historyView"),
+      // Not a rail destination of its own -- opened from Patients or History,
+      // and it keeps whichever of those lit while you are inside it.
+      record: document.getElementById("recordView"),
     };
 
-    function activateRoute(route) {
+    function activateRoute(route, { rail = route } = {}) {
       currentRoute = route;
       for (const [key, el] of Object.entries(routes)) {
         el.classList.toggle("active", key === route);
       }
       for (const btn of railButtons) {
-        btn.classList.toggle("active", btn.dataset.route === route);
+        btn.classList.toggle("active", btn.dataset.route === rail);
       }
     }
 
     function showRoute(route) {
+      // Leaving the record drops the trail into it, so a later visit cannot
+      // inherit a breadcrumb from a record you are no longer looking at.
+      if (route !== "record") {
+        historyState = { view: "root", origin: route === "history" ? "history" : "patients" };
+        historyBreadcrumbEl.hidden = true;
+        historyBreadcrumbEl.innerHTML = "";
+      }
       activateRoute(route);
-      if (route === "history") showHistoryRoot();
+      if (route === "history") loadHistoryBuckets();
+      if (route === "patients") loadHistoryPatients();
     }
 
     // The browser's own back/forward buttons only know about entries this
@@ -866,15 +897,13 @@
       const navState = event.state || { route: "new-claim" };
       suppressHistoryPush = true;
       try {
-        if (navState.route === "history") {
-          activateRoute("history");
-          if (navState.view === "patient" && navState.patient) openHistoryPatient(navState.patient);
-          else if (navState.view === "case" && navState.patient && navState.case) openHistoryCase(navState.patient, navState.case);
-          else if (navState.view === "encounter" && navState.patient && navState.case && navState.encounter) {
-            openHistoryEncounter(navState.patient, navState.case, navState.encounter);
-          } else showHistoryRoot();
+        recordOrigin = navState.origin || "patients";
+        if (navState.view === "patient" && navState.patient) openHistoryPatient(navState.patient);
+        else if (navState.view === "case" && navState.patient && navState.case) openHistoryCase(navState.patient, navState.case);
+        else if (navState.view === "encounter" && navState.patient && navState.case && navState.encounter) {
+          openHistoryEncounter(navState.patient, navState.case, navState.encounter);
         } else {
-          activateRoute("new-claim");
+          showRoute(navState.route === "record" ? recordOrigin : navState.route || "new-claim");
         }
       } finally {
         suppressHistoryPush = false;
@@ -883,13 +912,13 @@
 
     for (const btn of railButtons) {
       btn.addEventListener("click", () => {
+        recordOrigin = btn.dataset.route === "new-claim" ? "patients" : btn.dataset.route;
         showRoute(btn.dataset.route);
-        if (btn.dataset.route === "new-claim") pushHistoryState({ route: "new-claim" });
+        pushHistoryState({ route: btn.dataset.route });
       });
     }
 
-    const historyActivityEl = document.getElementById("historyActivity");
-    const historyRootEl = document.getElementById("historyRoot");
+    const historyBucketsEl = document.getElementById("historyBuckets");
     const historyPatientViewEl = document.getElementById("historyPatientView");
     const historyCaseViewEl = document.getElementById("historyCaseView");
     const historyEncounterViewEl = document.getElementById("historyEncounterView");
@@ -897,10 +926,15 @@
     const historyPatientListEl = document.getElementById("historyPatientList");
     const historyPatientSearchEl = document.getElementById("historyPatientSearch");
 
-    // Drill-down state for the History route: root (activity + patient
-    // list) -> patient (that patient's cases) -> case (that case's
-    // encounters, chronological) -> encounter (the 4-tab UI, read mode).
-    let historyState = { view: "root" };
+    // Drill-down state for the record route: patient (that patient's cases)
+    // -> case (that case's encounters, chronological) -> encounter (the
+    // 4-tab UI, read mode). `origin` is the route you came in from, so the
+    // breadcrumb leads back where you actually were rather than assuming.
+    let historyState = { view: "root", origin: "patients" };
+    // Which route opened the record you are looking at. Set before navigating;
+    // the open* functions stamp it onto historyState so the breadcrumb and the
+    // lit rail item both lead back where you actually came from.
+    let recordOrigin = "patients";
     let historyPatients = [];
 
     function formatActivityDate(isoString) {
@@ -1024,8 +1058,8 @@
       }
     }
 
-    function loadActivity() {
-      return fetchHistoryList(historyActivityEl, "/api/activity", {
+    function loadActivity(container) {
+      return fetchHistoryList(container, "/api/activity", {
         renderRow: renderActivityRow,
         emptyMessage: "Nothing here yet. Recent encounters and claims will show up here once there's activity.",
         onData: (data) => data.activity || [],
@@ -1096,6 +1130,8 @@
       renderRowCard(historyPatientListEl, filterHistoryPatients(), renderPatientRow, "No patients match your search.");
     });
 
+    const ORIGIN_LABELS = { patients: "Patients", history: "History" };
+
     function renderHistoryBreadcrumb() {
       if (historyState.view === "root") {
         historyBreadcrumbEl.hidden = true;
@@ -1103,7 +1139,9 @@
         return;
       }
       historyBreadcrumbEl.hidden = false;
-      const parts = ['<a class="rh-link" data-nav="root">History</a>'];
+      const parts = [
+        '<a class="rh-link" data-nav="root">' + escapeHtml(ORIGIN_LABELS[historyState.origin] || "Patients") + "</a>",
+      ];
       if (historyState.view === "patient") {
         parts.push(" / <span>" + escapeHtml(historyState.patient.name) + "</span>");
       } else if (historyState.view === "case") {
@@ -1117,7 +1155,7 @@
       historyBreadcrumbEl.innerHTML = parts.join("");
       historyBreadcrumbEl.querySelectorAll("[data-nav]").forEach((el) => {
         el.addEventListener("click", () => {
-          if (el.dataset.nav === "root") showHistoryRoot();
+          if (el.dataset.nav === "root") showRoute(historyState.origin);
           else if (el.dataset.nav === "patient") openHistoryPatient(historyState.patient);
           else if (el.dataset.nav === "case") openHistoryCase(historyState.patient, historyState.case);
         });
@@ -1133,7 +1171,6 @@
     // decided where its content landed.
 
     const HISTORY_VIEWS = {
-      root: historyRootEl,
       patient: historyPatientViewEl,
       case: historyCaseViewEl,
       encounter: historyEncounterViewEl,
@@ -1145,6 +1182,167 @@
     // "History" and had to scroll past everything to find what you clicked.
     function showHistoryView(name) {
       for (const [key, el] of Object.entries(HISTORY_VIEWS)) el.hidden = key !== name;
+      activateRoute("record", { rail: historyState.origin });
+    }
+
+    // ---- History buckets -------------------------------------------------
+    //
+    // Build-order step 11: History splits into Patients (browsing people) and
+    // History (triaging claims), and the record you open from either becomes
+    // its own route so the breadcrumb can say which way you came in.
+    //
+    // A provider triaging claims asks "what needs me next", not "what happened
+    // recently". These are that question, in the order the work runs: drafts
+    // to send, submissions in flight, rejections to fix, denials to fight --
+    // with the old undifferentiated feed kept as the last bucket for when you
+    // want everything.
+    //
+    // A rejection and a denial are not the same thing. A rejection never
+    // entered adjudication and is fixed and refiled as a fresh original; a
+    // denial was adjudicated and is appealed or corrected. They are split
+    // because that is the distinction a provider acts on.
+    const CLAIM_BUCKETS = [
+      {
+        name: "drafts",
+        label: "Drafts",
+        match: (c) => c.status === "draft",
+        empty: "No drafted claims waiting to be sent.",
+      },
+      {
+        name: "submitted",
+        label: "Submitted",
+        match: (c) => c.status === "submitted" || c.status === "pending",
+        empty: "Nothing is with a payer right now.",
+      },
+      {
+        name: "rejections",
+        label: "Rejections",
+        match: (c) => c.status === "rejected",
+        empty: "No rejected claims. A rejection comes back before adjudication and is fixed and refiled.",
+      },
+      {
+        name: "denials",
+        label: "Denials",
+        match: (c) => c.status === "denied",
+        empty: "No denied claims to appeal or correct.",
+      },
+      // No match: this one is the activity feed, not a slice of the claims.
+      { name: "all", label: "All history" },
+    ];
+
+    // A claim row names two things -- the claim and the patient it belongs to
+    // -- so each is its own link rather than the whole row being one target.
+    // That is what makes a patient reachable from any bucket, not just from
+    // the Patients page.
+    function renderClaimRow(claim) {
+      const row = document.createElement("div");
+      row.className = "claim-row";
+
+      const icon = document.createElement("div");
+      icon.className = "activity-icon";
+      icon.textContent = "$";
+      row.appendChild(icon);
+
+      const main = document.createElement("div");
+      main.className = "claim-main";
+
+      const line = document.createElement("div");
+      line.className = "claim-line";
+      line.appendChild(
+        objectLink(`${claim.claimId} · ${claim.payerName || "Unknown payer"}`, () => openRecordFromClaim(claim))
+      );
+      main.appendChild(line);
+
+      const meta = document.createElement("div");
+      meta.className = "claim-meta";
+      if (claim.patientName && claim.patientId) {
+        meta.appendChild(
+          objectLink(claim.patientName, () => {
+            recordOrigin = "history";
+            openHistoryPatient({ patientId: claim.patientId, name: claim.patientName });
+          })
+        );
+      } else {
+        meta.append("Unknown patient");
+      }
+      if (claim.caseTitle) meta.append(` · ${claim.caseTitle}`);
+      if (claim.claimType) meta.append(` · ${claim.claimType}`);
+      main.appendChild(meta);
+      row.appendChild(main);
+
+      const metaCol = document.createElement("div");
+      metaCol.className = "activity-meta";
+      const pill = document.createElement("span");
+      pill.className = "activity-pill " + (claim.status || "");
+      pill.textContent = claim.status || "unknown";
+      metaCol.appendChild(pill);
+      const date = document.createElement("span");
+      date.className = "activity-date";
+      date.textContent = formatActivityDate(claim.submittedAt || claim.createdAt) || "";
+      metaCol.appendChild(date);
+      row.appendChild(metaCol);
+
+      return row;
+    }
+
+    // A claim row only carries ids and display strings. Opening the record
+    // re-fetches the real case and encounter, the same way the activity feed
+    // does, rather than drilling in on a half-built object.
+    function openRecordFromClaim(claim) {
+      recordOrigin = "history";
+      return navigateToActivityItem({
+        type: "claim",
+        id: claim.claimId,
+        encounterId: claim.encounterId,
+        patientId: claim.patientId,
+        patientName: claim.patientName,
+        caseId: claim.caseId,
+        caseTitle: claim.caseTitle,
+      });
+    }
+
+    async function loadHistoryBuckets() {
+      historyBucketsEl.innerHTML = "";
+      const view = buildTabbedPanels(
+        CLAIM_BUCKETS.map((b) => ({ name: b.name, label: b.label })),
+        { label: "history" }
+      );
+      historyBucketsEl.appendChild(view.element);
+
+      loadActivity(view.panels.all);
+
+      try {
+        const res = await fetch("/api/claims");
+        const data = await res.json();
+        if (!res.ok) {
+          for (const bucket of CLAIM_BUCKETS) {
+            if (!bucket.match) continue;
+            view.panels[bucket.name].innerHTML = "";
+            view.panels[bucket.name].appendChild(emptyState(data.error || "Couldn't load claims."));
+          }
+          return;
+        }
+        const claims = data.claims || [];
+        for (const bucket of CLAIM_BUCKETS) {
+          if (!bucket.match) continue;
+          const rows = claims.filter(bucket.match);
+          // The count is the point of the bucket: it says where the work is
+          // without opening anything.
+          const count = document.createElement("span");
+          count.className = "bucket-count";
+          count.textContent = String(rows.length);
+          view.tabs[bucket.name].textContent = bucket.label;
+          view.tabs[bucket.name].appendChild(count);
+          renderRowCard(view.panels[bucket.name], rows, renderClaimRow, bucket.empty);
+        }
+      } catch (err) {
+        console.error("Loading claims failed:", err);
+        for (const bucket of CLAIM_BUCKETS) {
+          if (!bucket.match) continue;
+          view.panels[bucket.name].innerHTML = "";
+          view.panels[bucket.name].appendChild(emptyState("Couldn't load claims. Is the server running?"));
+        }
+      }
     }
 
     // The only way to make an inline link to another object. Anything naming a
@@ -1200,6 +1398,11 @@
     // One tab component, used wherever content is tabbed. Returns the element
     // to drop into a slot plus the panel each tab writes into.
     function buildTabbedPanels(names, { label }) {
+      // A name alone, or { name, label } where the tab reads differently from
+      // the key it is stored under.
+      const items = names.map((n) =>
+        typeof n === "string" ? { name: n, label: n.charAt(0).toUpperCase() + n.slice(1) } : n
+      );
       const wrap = document.createElement("div");
       const strip = document.createElement("div");
       strip.className = "tabs";
@@ -1218,14 +1421,14 @@
         }
       };
 
-      names.forEach((name, i) => {
+      items.forEach(({ name, label: text }, i) => {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "tab";
         btn.id = `tab-${label}-${name}`;
         btn.setAttribute("role", "tab");
         btn.setAttribute("aria-controls", `panel-${label}-${name}`);
-        btn.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+        btn.textContent = text;
         btn.addEventListener("click", () => select(name));
         // Arrow keys move between tabs, which is what a tablist is expected
         // to do once it announces itself as one.
@@ -1233,7 +1436,7 @@
           const delta = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
           if (!delta) return;
           e.preventDefault();
-          const next = names[(i + delta + names.length) % names.length];
+          const next = items[(i + delta + items.length) % items.length].name;
           select(next);
           buttons[next].focus();
         });
@@ -1251,8 +1454,8 @@
       });
 
       wrap.insertBefore(strip, wrap.firstChild);
-      select(names[0]);
-      return { element: wrap, panels };
+      select(items[0].name);
+      return { element: wrap, panels, tabs: buttons };
     }
 
     function sortCasesOpenFirst(cases) {
@@ -1300,8 +1503,8 @@
     }
 
     function openHistoryPatient(patient) {
-      historyState = { view: "patient", patient };
-      pushHistoryState({ route: "history", view: "patient", patient });
+      historyState = { view: "patient", patient, origin: recordOrigin };
+      pushHistoryState({ route: "record", view: "patient", patient, origin: recordOrigin });
       renderHistoryBreadcrumb();
       showHistoryView("patient");
 
@@ -1354,8 +1557,8 @@
     }
 
     function openHistoryCase(patient, caseObj) {
-      historyState = { view: "case", patient, case: caseObj };
-      pushHistoryState({ route: "history", view: "case", patient, case: caseObj });
+      historyState = { view: "case", patient, case: caseObj, origin: recordOrigin };
+      pushHistoryState({ route: "record", view: "case", patient, case: caseObj, origin: recordOrigin });
       renderHistoryBreadcrumb();
       showHistoryView("case");
 
@@ -1629,8 +1832,8 @@
     }
 
     function openHistoryEncounter(patient, caseObj, encounter) {
-      historyState = { view: "encounter", patient, case: caseObj, encounter };
-      pushHistoryState({ route: "history", view: "encounter", patient, case: caseObj, encounter });
+      historyState = { view: "encounter", patient, case: caseObj, encounter, origin: recordOrigin };
+      pushHistoryState({ route: "record", view: "encounter", patient, case: caseObj, encounter, origin: recordOrigin });
       renderHistoryBreadcrumb();
       showHistoryView("encounter");
 
@@ -2532,14 +2735,7 @@
         });
     }
 
-    function showHistoryRoot() {
-      historyState = { view: "root" };
-      pushHistoryState({ route: "history", view: "root" });
-      renderHistoryBreadcrumb();
-      showHistoryView("root");
-      loadActivity();
-      loadHistoryPatients();
-    }
+
 
     const navButtons = Array.from(document.querySelectorAll(".nav-item"));
     const panels = {

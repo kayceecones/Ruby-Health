@@ -137,6 +137,13 @@ export class Repository {
     throw new NotImplementedError("listClaimsForEncounter");
   }
 
+  /** @returns {Promise<object[]>} every Claim in the workspace, newest first.
+   *  Separate from listClaimsForEncounter because History buckets claims
+   *  across every patient and should not walk the tree to do it. */
+  async listAllClaims() {
+    throw new NotImplementedError("listAllClaims");
+  }
+
   /** Records the payer's own identifier for a claim (ICN/DCN), which arrives
    *  on the 277CA or 835 rather than at submission time. A corrected claim
    *  cannot be filed without it -- the payer reads a resubmission carrying no

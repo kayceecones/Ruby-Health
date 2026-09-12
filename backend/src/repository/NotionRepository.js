@@ -23,7 +23,7 @@ export class NotionRepositoryError extends Error {
 const STAGES = ["transcript", "facts", "codes", "claim"];
 const CREATED_BY_VALUES = ["system", "provider_edit"];
 const CLAIM_TYPES = ["original", "corrected", "secondary"];
-const CLAIM_STATUSES = ["draft", "submitted", "accepted", "denied", "pending"];
+const CLAIM_STATUSES = ["draft", "submitted", "accepted", "rejected", "denied", "pending"];
 const DOCUMENT_SOURCES = ["upload", "fax", "ehr_sync"];
 const FEEDBACK_TYPES = ["acknowledgment", "remittance"];
 
@@ -490,6 +490,15 @@ export class NotionRepository extends Repository {
       rich_text: { equals: encounterId },
     });
     return pages.map(parseClaim).sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+  }
+
+  // One query rather than walking patients -> cases -> encounters -> claims,
+  // which is what the activity feed does and what a bucketed History page
+  // would otherwise repeat on every visit.
+  async listAllClaims() {
+    this._requireClaimsDataSource();
+    const pages = await this._queryAll(this.claimsDataSourceId);
+    return pages.map(parseClaim).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   }
 
   async setPayerClaimControlNumber(claimId, controlNumber) {
