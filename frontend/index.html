@@ -132,8 +132,19 @@
     }
     /* Submitting is irreversible; it gets its own space rather than sitting
        flush against the letter you were reading. */
-    .appeal-submit { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border-soft); }
-    .appeal-submit .stedi-note { font-size: 12.5px; color: var(--ink-2); margin-bottom: 10px; }
+    .submit-actions { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border-soft); }
+    .submit-actions .stedi-note { font-size: 12.5px; color: var(--ink-2); margin-bottom: 10px; }
+    .amend-row {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 8px 0; border-bottom: 1px solid var(--border-soft);
+    }
+    .amend-code { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 600; font-size: 12.5px; color: var(--plum); flex: none; }
+    .amend-desc { font-size: 12.5px; color: var(--ink-2); flex: 1; min-width: 120px; }
+    .amend-row select, .amend-row input {
+      font: inherit; font-size: 12.5px; padding: 5px 8px; border-radius: 7px;
+      border: 1px solid var(--border); background: var(--card); color: var(--ink);
+    }
+    .amend-row input { min-width: 110px; }
     .appeal-quote { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; margin-bottom: 6px; line-height: 1.5; }
     .appeal-quote .verdict {
       flex: none; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
@@ -1984,7 +1995,7 @@
     // against something you were only reading.
     function renderAppealSubmitAction(claim, draft, reload) {
       const wrap = document.createElement("div");
-      wrap.className = "appeal-submit";
+      wrap.className = "submit-actions";
 
       const note = document.createElement("div");
       note.className = "stedi-note";
@@ -2165,6 +2176,265 @@
       return wrap;
     }
 
+    // ---- Acting on a claim from History -------------------------------
+    //
+    // History reads the record rather than editing it, but a provider looking
+    // at a claim still has to be able to act on it: send one that was only
+    // ever drafted, or correct one the payer has already seen. Which action a
+    // claim offers is decided by its status, in one place, so a card never
+    // shows a button that its state cannot support.
+
+    // The claim as it was filed, not merely the latest draft on the
+    // encounter -- a correction has to start from what the payer actually saw.
+    async function fetchClaimContent(claim) {
+      const res = await fetch(`/api/encounters/${encodeURIComponent(claim.encounterId)}/artifacts`);
+      const data = await res.json();
+      if (!res.ok) return null;
+      const match = (data.history || []).find((a) => a.artifactId === claim.artifactId);
+      return match?.content || null;
+    }
+
+    function renderSubmitClaimAction(claim, reload) {
+      const wrap = document.createElement("div");
+      wrap.className = "submit-actions";
+
+      const note = document.createElement("div");
+      note.className = "stedi-note";
+      note.textContent =
+        "This claim was drafted but never sent. Submits to Stedi's sandbox Test Payer -- a synthetic demo submission that never reaches a real payer.";
+      wrap.appendChild(note);
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-primary";
+      btn.textContent = "Submit claim to payer";
+
+      const status = document.createElement("div");
+      status.className = "status";
+
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        status.textContent = "Submitting to Stedi's sandbox...";
+        status.className = "status";
+        try {
+          const content = await fetchClaimContent(claim);
+          if (!content) {
+            status.textContent = "Couldn't load this claim's contents to submit.";
+            status.className = "status error";
+            btn.disabled = false;
+            return;
+          }
+          const res = await fetch("/api/submit-claim", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ claim: content, encounterId: claim.encounterId }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            status.textContent = data.error || "Could not submit this claim.";
+            status.className = "status error";
+            btn.disabled = false;
+            return;
+          }
+          status.textContent = `Submitted ${claim.claimId}.`;
+          reload();
+        } catch (err) {
+          status.textContent = "Something went wrong: " + err.message;
+          status.className = "status error";
+          btn.disabled = false;
+        }
+      });
+
+      wrap.appendChild(btn);
+      wrap.appendChild(status);
+      return wrap;
+    }
+
+    // Rows default to Keep. Dropping a code is explicit rather than implied by
+    // an empty field, so an untouched row can never be read as "delete this".
+    function buildAmendEditor(content, claim, status, reload) {
+      const box = document.createElement("div");
+      const rows = [];
+
+      const addGroup = (label, items) => {
+        if (!items || items.length === 0) return;
+        const head = document.createElement("div");
+        head.className = "section-title";
+        head.style.marginTop = "14px";
+        head.textContent = label;
+        box.appendChild(head);
+
+        for (const item of items) {
+          const row = document.createElement("div");
+          row.className = "amend-row";
+
+          const code = document.createElement("span");
+          code.className = "amend-code";
+          code.textContent = item.code;
+
+          const desc = document.createElement("span");
+          desc.className = "amend-desc";
+          desc.textContent = item.description || "";
+
+          const action = document.createElement("select");
+          action.setAttribute("aria-label", `What to do with ${item.code}`);
+          for (const [value, text] of [["keep", "Keep"], ["replace", "Replace"], ["drop", "Drop"]]) {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = text;
+            action.appendChild(option);
+          }
+
+          const replacement = document.createElement("input");
+          replacement.type = "text";
+          replacement.placeholder = "New code";
+          replacement.setAttribute("aria-label", `Replacement for ${item.code}`);
+          replacement.hidden = true;
+
+          const reason = document.createElement("input");
+          reason.type = "text";
+          reason.placeholder = "Why";
+          reason.setAttribute("aria-label", `Reason for changing ${item.code}`);
+          reason.hidden = true;
+
+          action.addEventListener("change", () => {
+            replacement.hidden = action.value !== "replace";
+            reason.hidden = action.value === "keep";
+          });
+
+          row.append(code, desc, action, replacement, reason);
+          box.appendChild(row);
+          rows.push({ item, action, replacement, reason });
+        }
+      };
+
+      addGroup("Diagnoses", content.diagnoses);
+      addGroup("Service lines", content.serviceLines);
+
+      const file = document.createElement("button");
+      file.type = "button";
+      file.className = "btn btn-primary";
+      file.style.marginTop = "14px";
+      file.textContent = "File corrected claim";
+
+      file.addEventListener("click", async () => {
+        const touched = rows.filter((r) => r.action.value !== "keep");
+        if (touched.length === 0) {
+          status.textContent = "Nothing changed yet -- set a code to Replace or Drop first.";
+          status.className = "status error";
+          return;
+        }
+        const blank = touched.find((r) => r.action.value === "replace" && !r.replacement.value.trim());
+        if (blank) {
+          status.textContent = `Give a replacement code for ${blank.item.code}, or set it to Drop.`;
+          status.className = "status error";
+          blank.replacement.focus();
+          return;
+        }
+
+        const suggestedCodeChanges = touched.map((r) => ({
+          currentCode: r.item.code,
+          suggestedCode: r.action.value === "drop" ? "" : r.replacement.value.trim(),
+          reason: r.reason.value.trim(),
+        }));
+
+        file.disabled = true;
+        status.textContent = "Building and submitting the corrected claim...";
+        status.className = "status";
+        try {
+          const res = await fetch(`/api/claims/${encodeURIComponent(claim.claimId)}/resubmit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ suggestedCodeChanges }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            status.textContent = data.error || "Could not file the corrected claim.";
+            status.className = "status error";
+            file.disabled = false;
+            return;
+          }
+          status.textContent = `Filed ${data.claim.claimId}, chained to ${claim.claimId}.`;
+          status.className = "status";
+          reload();
+        } catch (err) {
+          status.textContent = "Something went wrong: " + err.message;
+          status.className = "status error";
+          file.disabled = false;
+        }
+      });
+
+      box.appendChild(file);
+      return box;
+    }
+
+    function renderAmendClaimAction(claim, reload) {
+      const wrap = document.createElement("div");
+      wrap.className = "submit-actions";
+
+      const note = document.createElement("div");
+      note.className = "stedi-note";
+      wrap.appendChild(note);
+
+      // Same guard a correction has always carried: without the payer's own
+      // control number the payer reads the correction as a new claim and
+      // denies it as a duplicate.
+      if (!claim.payerClaimControlNumber) {
+        note.textContent =
+          "Amending needs the payer's claim control number. Record the payer's response above first, then this claim can be corrected.";
+        return wrap;
+      }
+
+      note.textContent =
+        "Replace or drop codes and resubmit as a correction referencing the original claim. Only the rows you change are sent.";
+
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "btn";
+      toggle.textContent = "Amend this claim";
+
+      const editor = document.createElement("div");
+      editor.hidden = true;
+
+      const status = document.createElement("div");
+      status.className = "status";
+
+      toggle.addEventListener("click", async () => {
+        if (!editor.hidden) {
+          editor.hidden = true;
+          toggle.textContent = "Amend this claim";
+          status.textContent = "";
+          return;
+        }
+        toggle.disabled = true;
+        status.textContent = "Loading the claim as it was filed...";
+        status.className = "status";
+        const content = await fetchClaimContent(claim).catch(() => null);
+        toggle.disabled = false;
+        if (!content || (!content.diagnoses?.length && !content.serviceLines?.length)) {
+          status.textContent = "Couldn't load this claim's codes to amend.";
+          status.className = "status error";
+          return;
+        }
+        status.textContent = "";
+        editor.innerHTML = "";
+        editor.appendChild(buildAmendEditor(content, claim, status, reload));
+        editor.hidden = false;
+        toggle.textContent = "Cancel amendment";
+      });
+
+      wrap.appendChild(toggle);
+      wrap.appendChild(editor);
+      wrap.appendChild(status);
+      return wrap;
+    }
+
+    // One place decides what a claim can do, so a card never offers an action
+    // its status cannot support.
+    function renderClaimActions(claim, reload) {
+      return claim.status === "draft" ? renderSubmitClaimAction(claim, reload) : renderAmendClaimAction(claim, reload);
+    }
+
     function renderClaimCard(claim, encounter, caseObj, reload) {
       const card = document.createElement("div");
       card.className = "card";
@@ -2230,6 +2500,7 @@
           body.appendChild(emptyState("Couldn't load the payer response. Is the server running?"));
         });
 
+      card.appendChild(renderClaimActions(claim, reload));
       return card;
     }
 
