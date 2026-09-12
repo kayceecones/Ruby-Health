@@ -195,6 +195,17 @@ fieldsets, filled through `renderFieldGroups()`. Adding a field or a group is
 an entry in that list — not another `appendChild` in the middle of a render
 function.
 
+### "Context", not "transcript"
+
+The first stage is **Context** everywhere a provider reads it: what they bring
+to the encounter, however they brought it — recorded, pasted or typed.
+
+**The stored stage key is still `transcript`**, and so is the `transcript`
+field on the API. That is deliberate, not a half-finished rename: the stage is
+a Notion select option carried by every artifact already written, so renaming
+it is a data migration. If you rename it, migrate the stored rows in the same
+change — and leave the API field alone unless you version the endpoint.
+
 ### Editing, and workspaces
 
 The four editors — facts, codes, claim and the transcript field — take an

@@ -557,7 +557,7 @@ app.post("/api/claims/:claimId/appeal", async (req, res) => {
     const transcript = transcriptArtifact?.content?.transcript || "";
     if (!transcript.trim()) {
       return res.status(400).json({
-        error: "This encounter has no transcript on file, so there is nothing to ground an appeal in.",
+        error: "This encounter has no clinical context on file, so there is nothing to ground an appeal in.",
       });
     }
 

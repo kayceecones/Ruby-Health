@@ -605,7 +605,7 @@
         <div id="claimNav" class="nav-group">
         <button class="nav-item" data-tab="transcript" type="button">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/><path d="M8 21h8"/></svg>
-          <span class="nav-label">Transcript</span>
+          <span class="nav-label">Context</span>
           <span class="nav-dot"></span>
         </button>
         <button class="nav-item" data-tab="facts" type="button">
@@ -671,7 +671,7 @@
       <div id="prepareClaimBar">
         <div id="prepareClaimText">
           <div id="prepareClaimTitle">Prepare claim</div>
-          <div id="prepareClaimSubtitle">Runs the transcript through extraction, coding, and claim population in one step.</div>
+          <div id="prepareClaimSubtitle">Runs the context through extraction, coding, and claim population in one step.</div>
         </div>
         <button id="prepareClaimBtn" type="button">Prepare claim →</button>
       </div>
@@ -686,8 +686,8 @@
       </div>
 
       <div id="panelTranscript" class="tabpanel">
-        <h1 class="page-title">Transcript</h1>
-        <div class="page-subtitle">Paste a transcript, or use the mic below. Nothing here navigates you anywhere automatically.</div>
+        <h1 class="page-title">Context</h1>
+        <div class="page-subtitle">The clinical context for this encounter -- record it, paste it, or type it. Nothing here navigates you anywhere automatically.</div>
 
         <div class="card" id="micControlCard">
           <div id="micStateRow">
@@ -708,7 +708,7 @@
             <div>
               <div id="micLabel">Push to talk</div>
               <div id="micHint">Tap to start talking. Tap again quickly to lock (hands-free); tap once more to stop.</div>
-              <div id="micUnsupported">Live mic capture isn't supported in this browser (try Chrome or Edge) — paste a transcript below instead.</div>
+              <div id="micUnsupported">Live mic capture isn't supported in this browser (try Chrome or Edge) — paste or type the context below instead.</div>
             </div>
           </div>
         </div>
@@ -716,11 +716,11 @@
         <div class="card">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
             <div style="display:flex; align-items:center;">
-              <span class="rh-heading" style="font-weight:700; font-size:14.5px;">Live transcript</span>
+              <span class="rh-heading" style="font-weight:700; font-size:14.5px;">Clinical context</span>
               <span id="transcriptListeningPill"><span class="dot"></span>Listening</span>
             </div>
             <div style="display:flex; gap:8px;">
-              <button id="cleanupBtn" class="btn" type="button">Clean up transcript</button>
+              <button id="cleanupBtn" class="btn" type="button">Clean up wording</button>
               <button id="extractBtn" class="btn btn-primary" type="button">Extract clinical facts</button>
             </div>
           </div>
@@ -734,7 +734,7 @@
             <div id="transcriptSummaryText" class="summary-callout-text"></div>
           </div>
 
-          <textarea id="transcript" placeholder="Paste a sample encounter transcript here, or use the mic above..."></textarea>
+          <textarea id="transcript" placeholder="Paste or type the clinical context here, or use the mic above..."></textarea>
           <div id="micInterim"></div>
           <div id="cleanupStatus" class="status"></div>
           <div id="extractStatus" class="status"></div>
@@ -747,7 +747,7 @@
 
       <div id="panelFacts" class="tabpanel">
         <h1 class="page-title">Clinical facts</h1>
-        <div class="page-subtitle">Auto-filled by "Extract clinical facts" on the Transcript tab, or edit/add by hand — either way, this feeds the Codes and Claim tabs.</div>
+        <div class="page-subtitle">Auto-filled by "Extract clinical facts" on the Context tab, or edit/add by hand — either way, this feeds the Codes and Claim tabs.</div>
         <div class="card" id="factsCard"></div>
 
         <div class="step-nav">
@@ -1691,7 +1691,7 @@
       const wrap = document.createElement("div");
       const text = (content && content.transcript) || "";
       if (!text.trim()) {
-        wrap.appendChild(emptyState("No transcript recorded."));
+        wrap.appendChild(emptyState("No context recorded."));
         return wrap;
       }
       const pre = document.createElement("div");
@@ -1973,7 +1973,7 @@
         const textarea = document.createElement("textarea");
         textarea.className = "ro-transcript-edit";
         textarea.value = ws.transcript;
-        textarea.placeholder = "No transcript recorded.";
+        textarea.placeholder = "No context recorded.";
         textarea.addEventListener("input", () => {
           ws.transcript = textarea.value;
           autoGrow(textarea);
@@ -1994,7 +1994,10 @@
       renderHistoryBreadcrumb();
       showHistoryView("encounter");
 
-      const artifacts = buildTabbedPanels(READ_TABS, { label: "encounter" });
+      const artifacts = buildTabbedPanels(
+        READ_TABS.map((t) => ({ name: t, label: t === "transcript" ? "Context" : t.charAt(0).toUpperCase() + t.slice(1) })),
+        { label: "encounter" }
+      );
       const panelEls = artifacts.panels;
 
       const slots = renderDetailView(historyEncounterViewEl, {
@@ -2484,7 +2487,7 @@
         const head = document.createElement("div");
         head.className = "section-title";
         head.style.marginTop = "14px";
-        head.textContent = "Quotes, checked against the transcript";
+        head.textContent = "Quotes, checked against the context";
         wrap.appendChild(head);
 
         for (const q of draft.quoteGrounding) {
@@ -2548,7 +2551,7 @@
       btn.type = "button";
       btn.className = "btn btn-primary";
       btn.style.marginTop = "14px";
-      btn.textContent = "Draft an appeal from the transcript";
+      btn.textContent = "Draft an appeal from the context";
 
       const status = document.createElement("div");
       status.className = "status";
@@ -3048,7 +3051,7 @@
     cleanupBtn.addEventListener("click", async () => {
       const transcript = state.transcript.trim();
       if (!transcript) {
-        cleanupStatusEl.textContent = "Paste or dictate a transcript first.";
+        cleanupStatusEl.textContent = "Add some context first -- record, paste or type it.";
         cleanupStatusEl.className = "status error";
         return;
       }
@@ -3090,7 +3093,7 @@
     async function runExtract() {
       const transcript = state.transcript.trim();
       if (!transcript) {
-        extractStatusEl.textContent = "Paste a transcript first.";
+        extractStatusEl.textContent = "Add some context first -- record, paste or type it.";
         extractStatusEl.className = "status error";
         return false;
       }
@@ -3452,13 +3455,13 @@
           flag.textContent = "Not checked";
         } else if (grounding.status === "verified") {
           flag.className = "quote-flag verified";
-          flag.textContent = "\u2713 In transcript";
+          flag.textContent = "\u2713 In context";
         } else if (grounding.status === "paraphrased") {
           flag.className = "quote-flag paraphrased";
           flag.textContent = "Paraphrased \u00b7 not a quote";
         } else {
           flag.className = "quote-flag unsupported";
-          flag.textContent = "Not found in transcript";
+          flag.textContent = "Not found in context";
         }
         body.appendChild(flag);
 
@@ -3710,7 +3713,7 @@
 
     async function runSuggestCodes() {
       if (!hasFacts()) {
-        codesStatusEl.textContent = "Add some clinical facts first (on the Facts tab), or extract them from a transcript.";
+        codesStatusEl.textContent = "Add some clinical facts first (on the Facts tab), or extract them from the context.";
         codesStatusEl.className = "status error";
         return false;
       }
@@ -3863,7 +3866,7 @@
     async function runPrepareClaim() {
       const transcript = state.transcript.trim();
       if (!transcript) {
-        prepareClaimStatusEl.textContent = "Paste or dictate a transcript first.";
+        prepareClaimStatusEl.textContent = "Add some context first -- record, paste or type it.";
         prepareClaimStatusEl.className = "status error";
         return;
       }
