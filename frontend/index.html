@@ -4293,7 +4293,15 @@
       const input = document.createElement(multiline ? "textarea" : "input");
       if (!multiline) input.type = "text";
       else input.rows = 3;
-      input.value = value || "";
+      // An object here is a programming error, and letting it through renders
+      // "[object Object]" -- which looks like data rather than like a mistake,
+      // and is then saved over the real value the moment anyone edits it.
+      // Blank is obviously wrong; the console says which field.
+      if (value !== null && value !== undefined && typeof value === "object") {
+        console.error(`claimLabeledInput got an object for "${labelText}" -- give it a primitive field.`);
+        value = "";
+      }
+      input.value = value ?? "";
       input.addEventListener("input", (e) => {
         onChange(e.target.value);
         ws.touched("claim");
@@ -4397,10 +4405,24 @@
         ["Member ID", c.patient.memberId, (v) => (c.patient.memberId = v)],
       ], ws);
 
+      // A real provider profile carries { address1, address2?, city, state,
+      // postalCode }; the pre-profile fallback carries a single string. Both
+      // exist in stored claims, so a string is folded into address1 rather
+      // than dropped -- and buildStediClaim only keeps the structured form,
+      // so flattening this back to a string would silently swap the real
+      // address for a canned one on the way to the payer.
+      const addr = c.provider.address;
+      c.provider.address = addr && typeof addr === "object" ? addr : { address1: String(addr || "") };
+      const a = c.provider.address;
+
       claimFieldGrid(slots.provider, [
         ["Name", c.provider.name, (v) => (c.provider.name = v)],
         ["NPI", c.provider.npi, (v) => (c.provider.npi = v)],
-        ["Address", c.provider.address, (v) => (c.provider.address = v)],
+        ["Address line 1", a.address1, (v) => (a.address1 = v)],
+        ["Address line 2", a.address2, (v) => (a.address2 = v)],
+        ["City", a.city, (v) => (a.city = v)],
+        ["State", a.state, (v) => (a.state = v)],
+        ["Postal code", a.postalCode, (v) => (a.postalCode = v)],
         ["Date of service", c.dateOfService, (v) => (c.dateOfService = v)],
       ], ws);
 
